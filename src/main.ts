@@ -18,7 +18,9 @@ import { sfx } from './audio';
 import { hud } from './hud';
 import { DUEL, playAttack, playBrace, playDeath, playMove } from './choreo';
 import { scars } from './scars';
-import { encode, hashKey, type AiRequest, type AiResult } from './ai';
+import { encode, hashKey, STYLES, type AiRequest, type AiResult, type Style } from './ai';
+import { bookMoves, openingName } from './book';
+import { SIDE_NAME, STYLE_NAME, judge, line, sacrificed, taken, type Moment } from './commentary';
 import { music, Score } from './music';
 import { fineModels, GLYPH } from './units';
 import { grime, loadModels } from './models';
@@ -156,26 +158,76 @@ const waiting = new Map<number, (r: AiResult | null) => void>();
 let reqId = 0, aiEpoch = 0;
 worker.onmessage = (e: MessageEvent<{ id: number; res: AiResult | null }>) => { waiting.get(e.data.id)?.(e.data.res); waiting.delete(e.data.id); };
 worker.onerror = () => { for (const r of waiting.values()) r(null); waiting.clear(); };
-function askAI(): Promise<AiResult | null> {
+/** A request in flight, tagged with the style generation it was asked under. */
+type Ask = Promise<AiResult | null> & { sg?: number };
+function askAI(): Ask {
   const req: AiRequest = {
     board: encode(engine.board), turn: engine.turn === 'r' ? 0 : 1, reps: engine.keys.slice(0, -1).map(hashKey),
     timeMs: mode === 'watch' ? 600 : 1000, variety: engine.history.length < 4,
+    style: styles[engine.turn], book: engine.history.length < 24 && startFen(engine) === START_FEN,
   };
-  return new Promise((res) => { const id = ++reqId; waiting.set(id, res); worker.postMessage({ id, req }); });
+  const p: Ask = new Promise((res) => { const id = ++reqId; waiting.set(id, res); worker.postMessage({ id, req }); });
+  p.sg = styleGen;
+  return p;
 }
 /** Let the computer move if it is its turn. `ready` is a search already started during the previous animation. */
-async function aiTurn(ready?: Promise<AiResult | null>) {
+async function aiTurn(ready?: Ask) {
   if (over || busy || !isAI(engine.turn)) return;
   const gen = generation, ply = engine.history.length, ep = ++aiEpoch;
   thinking = true; refresh();
-  const r = await (ready ?? askAI());
+  const r = await (ready && ready.sg === styleGen ? ready : askAI()); // a style change voids the prefetch
   await wait(mode === 'watch' ? 0.35 : 0.2);
   if (gen !== generation || ply !== engine.history.length || ep !== aiEpoch) return; // superseded by undo / restart / a newer request
   thinking = false;
   if (busy || over || !isAI(engine.turn)) { refresh(); return; }
   let mv = r && engine.legalFrom(r.from).includes(r.to) ? r : null;
   if (!mv) { const all = engine.legalMoves(); mv = all.length ? { ...all[(Math.random() * all.length) | 0], score: 0, depth: 0, nodes: 0 } : null; } // never stall
-  if (mv) void play(mv.from, mv.to);
+  if (!mv) return;
+  const side = engine.turn, done = play(mv.from, mv.to);
+  if (mv === r) noteAI(side, r, done);
+}
+
+// ---------- styles and commentary ----------
+// Each computer side has a style (pve: black's, cycled by tapping 人机 again; watch: a random pairing
+// each game, re-rolled by tapping 观战). A change applies from the next AI move: requests carry their
+// style generation and a stale prefetch is asked again. Commentary is one caption after the move:
+// the book opening's name once per side, else a notable moment, at most one every few plies.
+const styles: Record<Side, Style> = { r: 'balanced', b: 'balanced' };
+let styleGen = 0, pveStyle: Style = 'balanced'; // pve keeps its own choice across spectator games
+/** The computer's last move: the search's verdict, or a book move. */
+let lastAi: { side: Side; move: string; score: number; depth: number; book: boolean; style: Style; opening: string | null } | null = null;
+const fresh = () => ({ ply: -99, named: { r: false, b: false }, told: { r: new Set<Moment>(), b: new Set<Moment>() }, prev: { r: null as number | null, b: null as number | null } });
+let talk = fresh();
+function styleChanged() {
+  styleGen++;
+  if (thinking && !busy) { thinking = false; void aiTurn(); } // re-ask now; the old answer is discarded by the epoch guard
+}
+/** A fresh random pairing for spectator mode; `now` also re-asks a search already running. */
+function rollPairing(now = true) {
+  const r = STYLES[(Math.random() * 3) | 0], others = STYLES.filter((s) => s !== r);
+  styles.r = r; styles.b = others[(Math.random() * 2) | 0];
+  hud.reelCard(`${STYLE_NAME[styles.r]} 对 ${STYLE_NAME[styles.b]}`, '红方 · 黑方', 'd', 2.6);
+  if (now) styleChanged(); else styleGen++;
+}
+function cycleStyle() {
+  if (mode === 'watch') { rollPairing(); return; }
+  styles.b = pveStyle = STYLES[(STYLES.indexOf(styles.b) + 1) % STYLES.length];
+  hud.toast(`黑方棋风 · ${STYLE_NAME[styles.b]}`); styleChanged();
+}
+function noteAI(side: Side, r: AiResult, done: Promise<boolean>) {
+  const gen = generation, ply = engine.history.length, style = styles[side];
+  const opening = r.book ? openingName(engine.history.map((m) => sqName(m.from) + sqName(m.to)), side) : null;
+  lastAi = { side, move: sqName(r.from) + sqName(r.to), score: r.score, depth: r.depth, book: !!r.book, style, opening };
+  let text = '';
+  if (opening && !talk.named[side]) { talk.named[side] = true; text = opening; }
+  else if (!r.book) {
+    const m = judge({ score: r.score, prev: talk.prev[side], given: sacrificed(engine), taken: taken(engine), since: ply - talk.ply }, talk.told[side]);
+    if (m) { talk.told[side].add(m); text = line(m, style, r.score); }
+    talk.prev[side] = r.score;
+  }
+  if (!text) return;
+  talk.ply = ply;
+  void done.then((ok) => { if (ok && gen === generation && !rp && !reel && engine.history.length === ply) hud.remark(text, `${SIDE_NAME[side]} · ${STYLE_NAME[style]}`, side); });
 }
 
 function sync() {
@@ -327,13 +379,16 @@ function resetState() {
   rig.cineEnd(); cinematic(false); hud.hideOver(); hud.duelHide(); burn.duel = burn.banner = null;
   grade.uniforms.uImpact.value = 0;
   scars.rewind(engine.history.length);
-  thinking = false;
+  thinking = false; lastAi = null; talk = fresh(); hud.remark('', '', 'r');
   select(-1); sync();
   if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
   if (!over) void aiTurn();
 }
 function setMode(m: Mode) {
+  const was = mode;
   mode = m; hud.setMode(m);
+  if (m === 'watch' && was !== 'watch' && !rp) rollPairing(false);
+  if (m === 'pve' && styles.b !== pveStyle) { styles.b = pveStyle; styleGen++; }
   rig.director = m === 'watch' || !!rp?.playing;
   if (m !== 'watch' && !rp) rig.reset(m === 'pve' ? 'r' : engine.turn);
   thinking = false;
@@ -352,7 +407,9 @@ function restart(auto = false) {
   if (reel && auto) return;
   if (rp) { const r = rp; whenIdle(() => { if (rp !== r) return; leaveReplay(); restart(); }); return; }
   if (busy && !auto) return;
-  engine.load(START_FEN); sfx.drum(); resetState();
+  engine.load(START_FEN); sfx.drum();
+  if (mode === 'watch') rollPairing(false);
+  resetState();
   if (mode !== 'watch') rig.reset('r');
 }
 
@@ -613,7 +670,7 @@ window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 
 hud.init({
   reset: () => rig.reset(engine.turn),
-  undo, restart: () => restart(), mode: setMode,
+  undo, restart: () => restart(), mode: (m) => (m === mode && m !== 'pvp' && !rp ? cycleStyle() : setMode(m)), // again: change style
   autoCam: (on) => { opts.autoCam = on; if (on && mode === 'pvp') rig.faceSide(engine.turn); },
   badges: (on) => { opts.badges = on; for (const u of units.values()) u.badge.visible = on && !u.busy; },
   sound: (on) => { sfx.unlock(); sfx.setMuted(!on); },
@@ -693,7 +750,18 @@ const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(
   weather(time?: number, storm = 0, rain = 0) { weatherLock = time !== undefined; if (weatherLock) world.setMood(time!, storm, rain, true); else refresh(); },
   get state() {
     return { turn: engine.turn as Side, busy, over, selected, mode, thinking, history: engine.history.map((m) => m.notation), status: engine.status(),
-      replay: rp ? { ply: engine.history.length, total: rp.moves.length, playing: rp.playing, speed: rp.speed } : null };
+      replay: rp ? { ply: engine.history.length, total: rp.moves.length, playing: rp.playing, speed: rp.speed } : null, ai: lastAi };
+  },
+  /** Styles: style() both sides, style(side) one, style(side, name) sets it (from the next AI move). */
+  style(side?: Side, name?: Style) {
+    if (!side) return { ...styles };
+    if (name) { if (!STYLES.includes(name)) throw new Error('style: ' + STYLES.join(' / ')); styles[side] = name; if (mode === 'pve' && side === 'b') pveStyle = name; styleChanged(); }
+    return styles[side];
+  },
+  /** Opening book candidates for the position on screen, weighted for the side to move's style. */
+  book() {
+    if (startFen(engine) !== START_FEN) return [];
+    return bookMoves(encode(engine.board), engine.turn === 'r' ? 0 : 1, styles[engine.turn]).map(({ move, weight, names }) => ({ move, weight, names }));
   },
   set timeScale(v: number) { clock.userScale = v; },
   set manual(v: boolean) { manual = v; },

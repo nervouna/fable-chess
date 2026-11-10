@@ -144,6 +144,18 @@ class Hud {
 
   cinematic(on: boolean) { this.root.classList.toggle('cine', on); }
 
+  private remarkTimer = 0;
+  /** One line of commentary with a small byline, for a few seconds ('' hides it). */
+  remark(text: string, by: string, side: Side) {
+    const c = $('remark');
+    clearTimeout(this.remarkTimer); c.className = '';
+    if (!text) return;
+    c.querySelector('.t')!.textContent = text; c.querySelector('.s')!.textContent = by;
+    void c.offsetWidth;
+    c.className = 'show ' + side;
+    this.remarkTimer = window.setTimeout(() => { c.className = ''; }, 3600);
+  }
+
   // ---------- replay ----------
   private replaying = false;
   private shareOpen = false;

@@ -97,7 +97,7 @@ class PSys {
   }
 }
 
-interface Debris { o: THREE.Object3D; v: THREE.Vector3; w: THREE.Vector3; life: number; r: number; smoke: boolean; keep: boolean; stick: number; tag: number }
+interface Debris { o: THREE.Object3D; v: THREE.Vector3; w: THREE.Vector3; life: number; r: number; smoke: boolean; keep: boolean; stick: number; tag: number; sunk?: boolean }
 export interface DebrisOpts { smoke?: boolean; /** stay on the battlefield once it comes to rest */ keep?: boolean; /** local Y of a weapon tip: plant it in the ground on landing */ stick?: number }
 
 class FX {
@@ -121,6 +121,8 @@ class FX {
   private rockMat = new THREE.MeshStandardMaterial({ color: 0x6f6759, roughness: 0.95 });
   /** Called when a kept fragment comes to rest; the owner takes over its lifetime. */
   onRest: (o: THREE.Object3D, tag: number) => void = () => {};
+  /** Called when something lands in the river (the water draws a ring there). */
+  onWater: (x: number, z: number, strength: number) => void = () => {};
   /** Stamped on every fragment at launch (the move number), so late landings are attributed correctly. */
   tag = 0;
 
@@ -151,8 +153,14 @@ class FX {
       d.o.position.addScaledVector(d.v, dt);
       const wl = d.w.length();
       if (wl > 1e-4) d.o.rotateOnWorldAxis(tv.copy(d.w).divideScalar(wl), wl * dt);
-      const gy = groundHeight(d.o.position.x, d.o.position.z) + d.r;
-      if (d.o.position.y < gy) {
+      const ground = groundHeight(d.o.position.x, d.o.position.z), gy = ground + d.r;
+      if (!d.sunk && ground < WATER_Y && d.o.position.y < WATER_Y) { // into the river: a splash, then it sinks
+        d.sunk = true; d.keep = false; d.stick = 0; d.smoke = false; d.life = Math.min(d.life, 0.7);
+        this.splash(d.o.position, 5, 0.7); this.onWater(d.o.position.x, d.o.position.z, 0.6);
+        d.v.set(d.v.x * 0.15, -0.8, d.v.z * 0.15); d.w.multiplyScalar(0.3);
+      }
+      if (d.sunk) d.v.y = -0.8;
+      else if (d.o.position.y < gy) {
         d.o.position.y = gy;
         if (d.v.y < -2.5) this.dust(d.o.position, 4, 0.6);
         const solid = terraceInset(d.o.position.x, d.o.position.z) > 0.25;
@@ -236,6 +244,7 @@ class FX {
   /** Chunks of paving thrown up by a heavy impact. */
   rubble(p: THREE.Vector3, n = 8, power = 1) {
     n = Math.max(1, Math.round(n * quality.s.debris));
+    if (groundHeight(p.x, p.z) < WATER_Y) { this.splash(p, n * 3, power); return; } // a body in the river throws up water, not paving
     for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(this.rockGeo, this.rockMat);
       const a = rand(Math.PI * 2), r = rand(0.2, 0.7);

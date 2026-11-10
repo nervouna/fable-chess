@@ -24,7 +24,26 @@ export function groundHeight(x: number, z: number): number {
   const t = 1 - az / BANK;
   return -0.42 * smooth(Math.min(1, t / 0.6));
 }
+/** Centre line of the river beyond the board, where it meanders through the valley. */
+export const riverCenter = (x: number) => { const k = smooth(clamp((Math.abs(x) - 12) / 28, 0, 1)); return (Math.sin(x * 0.045) * 9 + Math.sin(x * 0.11 + 1.3) * 2) * k; };
 export const inWater = (x: number, z: number) => groundHeight(x, z) < WATER_Y + 0.05;
+/**
+ * How each troop type fords the river: draft below the surface at mid-stream, share of speed lost in the
+ * water, weight (spray, rings, sound) and the radius of the foam collar it raises.
+ */
+export const WADE: Record<string, { draft: number; slow: number; weight: number; r: number }> = {
+  P: { draft: 0.55, slow: 0.45, weight: 0.6, r: 0.32 }, A: { draft: 0.5, slow: 0.4, weight: 0.7, r: 0.32 }, K: { draft: 0.5, slow: 0.4, weight: 0.8, r: 0.36 },
+  N: { draft: 0.6, slow: 0.35, weight: 1.2, r: 0.5 }, R: { draft: 0.37, slow: 0.4, weight: 1.5, r: 0.75 }, C: { draft: 0.39, slow: 0.45, weight: 1.3, r: 0.62 },
+  B: { draft: 0.45, slow: 0.08, weight: 2, r: 0.85 },
+};
+const onDeck = (x: number) => BRIDGE_X.some((bx) => Math.abs(x - bx) < BRIDGE_HALF);
+/** How far into the ford (0 at the bank, 1 in the deep middle) at (x, z); 0 on the terraces and the bridges. */
+export const fordDepth = (x: number, z: number) => (Math.abs(z) >= BANK || onDeck(x) ? 0 : smooth(clamp((BANK - Math.abs(z)) / 0.6, 0, 1)));
+/** Root height of a unit with `draft` at (x, z): the ground, or down in the water mid-ford. */
+export function wadeY(x: number, z: number, draft: number) {
+  const g = groundHeight(x, z), k = fordDepth(x, z);
+  return k > 0 ? Math.min(g, k * (WATER_Y - draft)) : g;
+}
 /** Stone terrace extents (the only flat ground that can carry decals and wreckage). */
 export const TERRACE_X = 9.4, TERRACE_Z = 11;
 /** Distance from (x, z) to the nearest terrace edge; negative when off the terrace. */

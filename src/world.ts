@@ -1,10 +1,11 @@
 // The battlefield: terrain, river, stone board terraces, fortresses, props, sky and lighting.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BANK, BRIDGE_X, clamp, colX, lerp, rand, randS, rowZ, smooth, tween, WATER_Y } from './core';
+import { BANK, BRIDGE_X, clamp, colX, lerp, rand, randS, riverCenter, rowZ, smooth, tween, WATER_Y } from './core';
 import { fx } from './fx';
 import { box, clothMat, cone, cyl, FONT, glyphTexture, group, mesh, sph, std, TEAM, timeU } from './kit';
 import { quality, type Settings } from './quality';
+import { river } from './river';
 
 export const SUN_DIR = new THREE.Vector3(-0.55, 0.4, -0.73).normalize();
 const FOG = new THREE.Color().setRGB(0.3, 0.215, 0.3);
@@ -22,7 +23,6 @@ function fbm(x: number, y: number, oct = 5) {
 }
 const sstep = (a: number, b: number, v: number) => smooth(clamp((v - a) / (b - a), 0, 1));
 
-const riverCenter = (x: number) => { const k = sstep(12, 40, Math.abs(x)); return (Math.sin(x * 0.045) * 9 + Math.sin(x * 0.11 + 1.3) * 2) * k; };
 const riverWidth = (x: number) => 1.25 + sstep(10, 30, Math.abs(x)) * 2.6;
 
 /** The valley as an N x N grid, denser towards the board, with vertex colours. */
@@ -69,7 +69,7 @@ float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
 float fbm(vec2 p){ float a=0.5, s=0.0; for(int i=0;i<5;i++){ s+=a*vnoise(p); a*=0.5; p=p*2.03+vec2(17.1,9.7);} return s; }`;
 
-// Sky palette shared (by reference) between the sky dome and the water reflection; the weather
+// Sky palette shared (by reference) between the sky dome and the water (river.ts); the weather
 // system rewrites these values every frame.
 const V3 = (r: number, g: number, b: number) => ({ value: new THREE.Vector3(r, g, b) });
 const SKY = {
@@ -112,48 +112,6 @@ function makeSky() {
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(480, 48, 24), mat);
   m.frustumCulled = false;
-  return m;
-}
-
-function makeWater() {
-  const mat = new THREE.ShaderMaterial({
-    transparent: true, fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uSun: { value: SUN_DIR.clone() }, uTime: { value: 0 } }]),
-    vertexShader: /* glsl */ `
-      varying vec3 vW;
-      #include <fog_pars_vertex>
-      void main(){
-        vec4 w=modelMatrix*vec4(position,1.0); vW=w.xyz;
-        vec4 mvPosition=viewMatrix*w; gl_Position=projectionMatrix*mvPosition;
-        #include <fog_vertex>
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform vec3 uSun, uSunCol; uniform float uTime; varying vec3 vW;
-      #include <fog_pars_fragment>
-      ${NOISE_GLSL} ${SKY_GLSL}
-      float rc(float x){ float k=smoothstep(12.0,40.0,abs(x)); return (sin(x*0.045)*9.0+sin(x*0.11+1.3)*2.0)*k; }
-      float hgt(vec2 p){ return fbm(p*0.9+vec2(uTime*0.55,uTime*0.08))*0.6+fbm(p*2.3+vec2(uTime*0.9,-uTime*0.2))*0.3; }
-      void main(){
-        vec2 p=vW.xz; float e=0.08;
-        float h0=hgt(p); vec3 n=normalize(vec3((h0-hgt(p+vec2(e,0.0)))*2.2,1.0,(h0-hgt(p+vec2(0.0,e)))*2.2));
-        vec3 V=normalize(cameraPosition-vW); float fres=pow(1.0-max(dot(n,V),0.0),3.0);
-        vec3 R=reflect(-V,n); R.y=abs(R.y);
-        vec3 sky=skyBase(R,uSun)*0.8;
-        float spec=pow(max(dot(R,uSun),0.0),260.0)*3.0+pow(max(dot(R,uSun),0.0),30.0)*0.1;
-        float rd=abs(p.y-rc(p.x)); float rw=1.25+smoothstep(10.0,30.0,abs(p.x))*2.6;
-        float edge=smoothstep(rw*0.45,rw*0.95,rd);
-        vec3 body=mix(vec3(0.015,0.085,0.11), vec3(0.07,0.24,0.24), edge);
-        vec3 col=mix(body,sky,0.18+fres*0.75)+uSunCol*spec;
-        float foam=smoothstep(0.7,0.86,fbm(p*vec2(1.6,4.0)+vec2(uTime*1.3,0.0))+edge*0.22);
-        col=mix(col,vec3(0.75,0.82,0.9),foam*0.4);
-        gl_FragColor=vec4(col,0.86+foam*0.1);
-        #include <fog_fragment>
-      }`,
-  });
-  Object.assign(mat.uniforms, { uZen: SKY.uZen, uMid: SKY.uMid, uHor: SKY.uHor, uHorSun: SKY.uHorSun, uSunCol: SKY.uSunCol }); // share, don't clone
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(300, 300).rotateX(-Math.PI / 2), mat);
-  m.position.y = WATER_Y;
-  m.renderOrder = 1;
   return m;
 }
 
@@ -313,6 +271,7 @@ export class World {
     if (sh.mapSize.x !== s.shadowSize) { sh.mapSize.set(s.shadowSize, s.shadowSize); sh.map?.dispose(); sh.map = null; }
     if (this.ground.userData.n !== s.terrain) { this.ground.geometry.dispose(); this.ground.geometry = terrainGeo(s.terrain); this.ground.userData.n = s.terrain; }
     this.trees.castShadow = this.rocks.castShadow = s.propShadows;
+    river.applyQuality(s);
     const key = s.merge ? `merge-${s.propShadows}` : '';
     if (key !== this.mergedKey) { this.mergedKey = key; this.mergeScenery(s); }
   }
@@ -406,7 +365,7 @@ export class World {
     m.receiveShadow = true;
     this.scene.add(m);
     const c = new THREE.Color();
-    this.water = makeWater();
+    this.water = river.build(SKY, terrainH);
     this.scene.add(this.water);
 
     // Trees and rocks
@@ -680,7 +639,7 @@ export class World {
     SKY.uStars.value = L('stars') * (1 - s); SKY.uCover.value = s;
     C3('sun', tmpV, [0, 0, 0], 0); SUN_DIR.copy(tmpV).normalize();
     this.sun.position.copy(SUN_DIR).multiplyScalar(70);
-    (this.water.material as THREE.ShaderMaterial).uniforms.uSun.value.copy(SUN_DIR);
+    river.mood(m.time, s, m.rain, SUN_DIR);
     C3('light', tmpV, [0.45, 0.52, 0.72]); this.sun.color.setRGB(tmpV.x, tmpV.y, tmpV.z);
     this.sun.intensity = L('sunInt') * (1 - 0.82 * s);
     C3('hemiSky', tmpV, [0.2, 0.25, 0.36]); this.hemi.color.setRGB(tmpV.x, tmpV.y, tmpV.z);
@@ -713,7 +672,7 @@ export class World {
 
   update(t: number, dt: number, focus: THREE.Vector3 = ORIGIN) {
     this.applyMood(dt, focus);
-    (this.water.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+    river.update();
     for (const b of this.braziers) {
       if (Math.random() < dt * 40) fx.fire(b.pos, 1, 0.8);
       if (Math.random() < dt * 5) fx.embers(b.pos, 1, 0xff8a30, 0.15, 2.4);

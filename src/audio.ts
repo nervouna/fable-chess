@@ -105,7 +105,16 @@ class Sfx {
   whoosh() { this.nz(0.32, 0.22, 'bandpass', 500, 2600, 1.4, 0, 0.12); }
   rumble(dur: number) { this.nz(dur, 0.3, 'lowpass', 160, 260, 1, 0, dur * 0.3); this.nz(dur, 0.08, 'bandpass', 1400, 900, 6, 0, dur * 0.3); }
   creak(dur: number) { this.nz(dur, 0.12, 'bandpass', 300, 380, 5, 0, 0.1); this.tone('sawtooth', 70, 85, dur, 0.03); }
-  splash() { this.nz(0.35, 0.2, 'bandpass', 1800, 700, 0.8, 0, 0.02); }
+  /** A splash; `p` above 1 is something heavy going in (a deeper plunge under the spray). */
+  splash(p = 1) {
+    this.nz(0.35 + 0.15 * p, 0.2 * Math.min(2, p), 'bandpass', 1800, 700, 0.8, 0, 0.02);
+    if (p > 0.9) { this.tone('sine', 180 * p, 60, 0.3, 0.18 * Math.min(2, p)); this.nz(0.6, 0.18 * p, 'lowpass', 700, 120, 1, 0.05, 0.03); }
+  }
+  /** One stride through the water: a slosh, lower and fuller for heavier waders. */
+  wade(weight = 1) {
+    this.nz(0.28, 0.1 + 0.06 * weight, 'bandpass', 1100 / Math.sqrt(weight), 420, 1.4, 0, 0.04);
+    this.nz(0.22, 0.05 * weight, 'lowpass', 500, 160, 1, 0.06, 0.03);
+  }
   neigh(p = 1) { if (!this.ok()) return; this.tone('sawtooth', 900 * p, 1500 * p, 0.12, 0.06); this.tone('sawtooth', 1500 * p, 600 * p, 0.38, 0.07, 0.12); this.tone('square', 1400 * p, 500 * p, 0.38, 0.02, 0.12); }
   trumpet(p = 1) { this.tone('sawtooth', 240 * p, 520 * p, 0.25, 0.1); this.tone('sawtooth', 520 * p, 420 * p, 0.6, 0.12, 0.25); this.tone('square', 523 * p, 415 * p, 0.6, 0.04, 0.25); }
   // ----- combat -----
@@ -122,6 +131,12 @@ class Sfx {
   gong() { for (const [f, v] of [[98, 0.4], [147, 0.25], [196.5, 0.2], [262, 0.14], [331, 0.1], [415, 0.06]]) this.tone('sine', f, f * 0.985, 3.2, v); this.nz(0.5, 0.2, 'bandpass', 900, 300, 2); }
   check() { this.tone('sine', 196, 194, 1.4, 0.3); this.tone('sine', 294, 292, 1.4, 0.2); this.tone('triangle', 588, 584, 0.6, 0.12); this.nz(0.2, 0.14, 'bandpass', 1500, 500, 2); }
   drum(delay = 0, v = 1) { this.tone('sine', 120, 42, 0.4, 0.7 * v, delay); this.nz(0.1, 0.25 * v, 'lowpass', 900, 200, 1, delay); }
+  /** The reserves' drum roll: quickening strokes that swell, then a last heavy beat. */
+  roll() { for (let i = 0; i < 14; i++) this.drum(i * (0.085 - i * 0.0025), 0.25 + i * 0.03); this.drum(1.2, 0.9); }
+  /** A distant shout from the ranks: a few voices of noise through vowel-like bands. */
+  cheer() { for (const [f, d] of [[620, 0], [880, 0.05], [1150, 0.1], [740, 0.18]]) this.nz(0.9, 0.05, 'bandpass', f, f * 1.25, 5, d, 0.12); }
+  /** War drums answering a check: two heavy pairs. */
+  warDrums() { [0, 0.3, 0.75, 1.05].forEach((d, i) => this.drum(d, i % 2 ? 0.7 : 1)); }
   victory() { [0, 0.22, 0.44, 0.6, 0.76, 0.88, 1.0].forEach((d, i) => this.drum(d, 0.6 + i * 0.07)); this.gong(); [392, 523, 659, 784].forEach((f, i) => this.tone('triangle', f, f, 1.2, 0.12, 1.1 + i * 0.16)); }
 }
 

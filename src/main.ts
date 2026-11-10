@@ -6,9 +6,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
-import { Engine, START_FEN, sq, sqName, type Side, type Status } from './engine';
+import { Engine, other, START_FEN, sq, sqName, type Side, type Status } from './engine';
 import type { Mode } from './hud';
-import { clock, colX, ease, groundHeight, lerp, rowZ, slowmo, sqPos, tick, tween, wait } from './core';
+import { clock, colX, ease, lerp, rowZ, slowmo, sqPos, tick, tween, wait, WADE, WATER_Y } from './core';
 import { fx } from './fx';
 import { TEAM, timeU } from './kit';
 import { World } from './world';
@@ -18,6 +18,9 @@ import { sfx } from './audio';
 import { hud } from './hud';
 import { DUEL, playAttack, playBrace, playDeath, playMove } from './choreo';
 import { scars } from './scars';
+import { river } from './river';
+import { armies } from './armies';
+import { morale } from './morale';
 import { encode, hashKey, STYLES, type AiRequest, type AiResult, type Style } from './ai';
 import { bookMoves, openingName } from './book';
 import { SIDE_NAME, STYLE_NAME, judge, line, sacrificed, taken, type Moment } from './commentary';
@@ -45,9 +48,11 @@ const scene = new THREE.Scene();
 const world = new World(scene, renderer);
 fx.init(scene);
 scars.init(scene);
+armies.init(scene, quality.s);
 rig.init(canvas);
 world.cam = rig.cam;
 world.onThunder = (d) => sfx.thunder(d);
+river.waders = function* () { for (const u of units.values()) yield { x: u.root.position.x, z: u.root.position.z, r: WADE[u.piece.type].r, s: 1 }; };
 
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: quality.s.msaa }));
 composer.addPass(new RenderPass(scene, rig.cam));
@@ -254,6 +259,7 @@ function refresh() {
   const caps = engine.history.reduce((n, m) => n + (m.captured ? 1 : 0), 0);
   progress = Math.min(1, Math.max(caps / 18, engine.history.length / 110));
   inCheckNow = st.check && !st.over;
+  armies.set(morale(engine.board), st.check && !st.over ? other(engine.turn) : null, st.over, st.winner);
   if (!weatherLock) world.setMood(progress, st.over ? 0.75 : st.check ? 1 : 0, st.over ? 1 : st.check ? 0.3 : 0);
   const last = engine.history.at(-1);
   lastMarks.forEach((m, i) => {
@@ -311,6 +317,7 @@ async function play(from: number, to: number, remote = false): Promise<boolean> 
       fx.sparks(new THREE.Vector3(toPos.x, toPos.y + 0.9, toPos.z), dir, 30, TEAM[u.piece.side].glow, 9);
       fx.flash(toPos, TEAM[u.piece.side].glow, 45, 0.35);
       death = playDeath(v, dir, kind);
+      armies.cheer(u.piece.side);
       rig.cineFollow(v.root.position);
     });
     await death;
@@ -325,7 +332,7 @@ async function play(from: number, to: number, remote = false): Promise<boolean> 
   if (st.over) await finale(st, u);
   else {
     if (st.check) {
-      flash('將軍', m.piece.side); sfx.check(); rig.shake(0.25); world.strike(rig.cam);
+      flash('將軍', m.piece.side); sfx.check(); armies.drums(); rig.shake(0.25); world.strike(rig.cam);
       if (mode === 'watch' || rp) rig.focus(sqPos(engine.kingSquare(engine.turn)), 1.6);
     }
     if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
@@ -382,9 +389,9 @@ function resetState() {
   over = engine.status().over; busy = false; post.desat = 0; post.tilt = 0;
   rig.cineEnd(); cinematic(false); hud.hideOver(); hud.duelHide(); burn.duel = burn.banner = null;
   grade.uniforms.uImpact.value = 0;
-  scars.rewind(engine.history.length);
+  scars.rewind(engine.history.length); river.clear();
   thinking = false; lastAi = null; talk = fresh(); hud.remark('', '', 'r');
-  select(-1); sync();
+  select(-1); sync(); armies.snap();
   if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
   if (mode === 'net') netSync(); else if (!over) void aiTurn();
 }
@@ -773,7 +780,7 @@ online.init({
 const qBtn = document.getElementById('btn-quality')!, showQ = () => { qBtn.querySelector('span')!.textContent = '画质 ' + { high: '高', mid: '中', low: '低' }[quality.tier]; };
 qBtn.onclick = () => void quality.set(quality.next());
 quality.onChange.push(async (s) => {
-  applyQuality(s); world.applyQuality(s); fx.applyQuality(); showQ();
+  applyQuality(s); world.applyQuality(s); armies.applyQuality(s); fx.applyQuality(); showQ();
   await loadModels(s.models);
   if (busy) rebuildQueued = true; else { select(-1); sync(); }
 });
@@ -798,7 +805,7 @@ function step(realDt: number) {
     u.ring.material.opacity = sel || tgt ? 1 : chk ? 0.6 + 0.4 * Math.sin(t * 9) : 0.42;
     u.ring.material.color.set(chk || tgt ? 0xff2010 : TEAM[u.piece.side].glow);
     u.ring.scale.setScalar(sel ? 1.12 + 0.06 * Math.sin(t * 6) : tgt ? 1.25 + 0.1 * Math.sin(t * 8) : chk ? 1.2 : 1);
-    u.ring.position.y = 0.035 + Math.max(0, -0.16 - groundHeight(u.root.position.x, u.root.position.z));
+    u.ring.position.y = 0.035 + Math.max(0, WATER_Y + 0.04 - u.root.position.y); // floats on the water while fording
   }
   const pulse = 0.5 + 0.5 * Math.sin(t * 5);
   for (const m of targets) {
@@ -807,7 +814,7 @@ function step(realDt: number) {
     m.cap.rotation.y = t * 1.6; m.cap.scale.setScalar(0.95 + 0.12 * pulse);
   }
   beam.material.opacity = 0.32 + 0.14 * pulse; beam.rotation.y = t;
-  fx.update(dt); scars.update(dt);
+  fx.update(dt); scars.update(dt); armies.update(dt, world.mood.storm);
   rig.update(realDt);
   const k = 1 - Math.exp(-realDt * 6), gu = grade.uniforms;
   gu.uTilt.value = lerp(gu.uTilt.value, post.tilt, k);
@@ -837,7 +844,11 @@ online.fromHash();
 // ---------- debug / test hook ----------
 const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
 (window as any).__game = {
-  engine, units, rig, clock, fx, scars, scene, renderer, grade: grade.uniforms, world, music, Score, grime,
+  engine, units, rig, clock, fx, scars, scene, renderer, grade: grade.uniforms, world, music, Score, grime, armies,
+  /** Morale of both armies (0..1) from the material on the board. */
+  morale() { return morale(engine.board); },
+  /** Make one side's reserves cheer (as after a capture). */
+  cheer(side: Side) { armies.cheer(side); },
   /** Pin the weather for testing: weather(time, storm, rain), or weather() to follow the game again. */
   weather(time?: number, storm = 0, rain = 0) { weatherLock = time !== undefined; if (weatherLock) world.setMood(time!, storm, rain, true); else refresh(); },
   get state() {

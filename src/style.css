@@ -98,6 +98,16 @@ html, body {
 #duel.show { animation: duel 2.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
 @keyframes duel { 0% { opacity: 0; transform: translateX(-60px) skewX(-14deg); filter: blur(10px); } 9% { opacity: 1; transform: none; filter: none; } 80% { opacity: 1; transform: translateX(14px); } 100% { opacity: 0; transform: translateX(40px); } }
 
+
+/* Commentary: one line under the top bar, clear of the banner (30%), the reel card and the duel card.
+   Hidden while a duel plays out, and in replay and the reel. */
+#remark { position: absolute; top: calc(94px + var(--sa-t)); left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 5px 26px 6px; text-align: center; white-space: nowrap; background: linear-gradient(90deg, transparent, rgba(14, 10, 9, 0.72) 18%, rgba(14, 10, 9, 0.72) 82%, transparent); opacity: 0; visibility: hidden; z-index: 6; transition: opacity 0.3s; }
+#remark .t { display: block; font-size: 20px; letter-spacing: 0.22em; margin-right: -0.22em; color: #fff3d6; overflow: hidden; text-overflow: ellipsis; }
+#remark .s { display: block; margin-top: 1px; font-size: 12px; letter-spacing: 0.3em; margin-right: -0.3em; color: var(--gold); opacity: 0.85; }
+#remark.r .t { text-shadow: 0 0 14px rgba(255, 70, 20, 0.75); } #remark.b .t { text-shadow: 0 0 14px rgba(40, 190, 255, 0.75); }
+#remark.show { visibility: visible; animation: remark 3.6s ease forwards; }
+#hud.cine #remark, #hud.replay #remark, #hud.reel #remark { visibility: hidden; }
+@keyframes remark { 0% { opacity: 0; transform: translate(-50%, -6px); } 10% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
 /* Game over */
 #over { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; visibility: hidden; transition: opacity 0.8s, visibility 0.8s; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.62)); z-index: 7; }
 #over.show { opacity: 1; visibility: visible; }
@@ -249,6 +259,7 @@ html, body {
   #reelbar button { flex-direction: column; gap: 1px; min-height: 44px; padding: 3px 8px; font-size: 11px; }
   #reelbar button b { font-size: 16px; line-height: 1.1; }
   #rl-text { font-size: 13px; }
+  #remark { top: calc(56px + var(--sa-t)); padding: 3px 18px 4px; } #remark .t { font-size: 16px; letter-spacing: 0.12em; margin-right: -0.12em; }
   #reelcard { top: 17%; } #reelcard .t { font-size: clamp(28px, 7.6vw, 60px); letter-spacing: 0.1em; margin-right: -0.1em; }
 }
 @media (max-width: 760px) and (orientation: portrait) {
@@ -273,6 +284,8 @@ html, body {
   .moves .hd span { display: none; } /* three buttons (复盘 名局 分享) fill the header */
   #moves { font-size: 12px; line-height: 1.6; padding: 4px 6px 6px 28px; } #moves li span { width: 52px; }
   #duel .nm { font-size: clamp(34px, 6.4vw, 64px); }
+  /* Short screens: the title card reaches down to the top bar, so commentary sits low, between the panels. */
+  #remark { top: auto; bottom: calc(10px + var(--sa-b)); }
   #over .card { transform: none; }
   #over .row { margin-top: 18px; }
 }

@@ -20,6 +20,8 @@ export interface Classic {
   moves: string;
   /** How the line ends where the source says so (shown on the closing card). */
   result?: string;
+  /** The side the source says is winning, when the line stops short of mate. */
+  winner?: Side;
   /** The engine's verdict on the final position, when the line plays to mate. */
   end?: { reason: EndReason; winner: Side };
 }
@@ -124,7 +126,7 @@ export const CLASSICS: Classic[] = [
   {
     // github.com/liangqi/xqwizard/blob/eab4a994/XQWIZARD/橘中秘/2.让先/2-11.让先-小列手炮弃相陷车.PGN (the source's last note: 死车)
     // checked: https://www.xiangqiqipu.com/Category/View-7879.html, http://m.xqdao.com/qipu/show/69085/
-    title: '棄象陷車', source: '橘中秘 · 讓先第十一局', result: '紅車已死',
+    title: '棄象陷車', source: '橘中秘 · 讓先第十一局', result: '紅車已死', winner: 'b',
     blurb: '小列手炮：黑方退马弃象，诱红车深入吃底，七回合即成死车。',
     moves: `1. 炮二平五 炮２平５
 2. 马二进三 马２进３
@@ -138,7 +140,7 @@ export const CLASSICS: Classic[] = [
     // 梅花譜, 屏風馬破當頭炮 第一局 (破巡河車吃卒用炮打象): text from https://gj.zdic.net/zibu/308
     // checked: https://www.xiangqiqipu.com/Category/View-7883.html, and the left-right mirrored line at
     // https://baike.baidu.com/item/梅花谱/6069907 (which ends 黑得车胜)
-    title: '屏風馬破當頭炮', source: '梅花譜 · 屏風馬第一局', result: '黑勝',
+    title: '屏風馬破當頭炮', source: '梅花譜 · 屏風馬第一局', result: '黑勝', winner: 'b',
     blurb: '梅谱开宗名局：屏风马后发制人，马炮联攻逼帅出宫，黑方得车。',
     moves: `1. 炮八平五 马２进３
 2. 马八进七 卒７进１

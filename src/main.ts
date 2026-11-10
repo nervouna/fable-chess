@@ -26,6 +26,8 @@ import { quality, type Settings } from './quality';
 import { decode, encode as encodeRecord, resultText, startFen, toText, type Ply } from './record';
 import { highlights, type Clip } from './reel';
 import { Recorder, canRecord, type Caption, type Overlay, type Recording } from './capture';
+import { CLASSICS, classicRecord, type Classic } from './classics';
+import { traditional } from './notation';
 
 // ---------- renderer ----------
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -147,7 +149,7 @@ let mode: Mode = 'pvp', thinking = false, progress = 0, inCheckNow = false, weat
 /** Is this side played by the computer in the current mode? */
 const isAI = (s: Side) => !rp && (mode === 'watch' || (mode === 'pve' && s === 'b'));
 /** Replay of a recorded game. `back` is the live game to return to; `token` invalidates stale autoplay timers. */
-interface Replay { fen: string; moves: Ply[]; code: string; back: { fen: string; moves: Ply[] }; playing: boolean; speed: number; token: number }
+interface Replay { fen: string; moves: Ply[]; code: string; back: { fen: string; moves: Ply[] }; playing: boolean; speed: number; token: number; /** a classic from the manuals: its moves are captioned */ classic?: Classic }
 let rp: Replay | null = null;
 
 // ---------- AI (search runs in a worker) ----------
@@ -385,7 +387,7 @@ function enterReplay(text?: string): boolean {
   return true;
 }
 /** Switch to replaying `rec` at `ply` (no waiting: call when idle). */
-function openReplay(rec: { fen: string; moves: Ply[]; code: string }, ply: number) {
+function openReplay(rec: { fen: string; moves: Ply[]; code: string; classic?: Classic }, ply: number) {
   const back = rp?.back ?? { fen: startFen(engine), moves: plies(engine) };
   rp = { ...rec, back, playing: false, speed: rp?.speed ?? 1, token: 0 };
   aiEpoch++; thinking = false; clock.userScale = rp.speed; rig.director = mode === 'watch';
@@ -396,6 +398,7 @@ function openReplay(rec: { fen: string; moves: Ply[]; code: string }, ply: numbe
 function seekNow(ply: number) {
   if (!rp) return;
   rp.token++;
+  if (rp.classic) classicCard(); // a jump leaves no stale caption
   rebuild(rp.fen, rp.moves.slice(0, Math.max(0, Math.min(rp.moves.length, ply))));
   resetState();
   if (over) world.setMood(progress, 0.75, 1); // a finished position shows its ending weather at once
@@ -410,6 +413,7 @@ function replayStep() {
   const m = rp.moves[engine.history.length];
   if (!m) { pause(); refresh(); return; }
   void play(m.from, m.to);
+  if (rp.classic && !reel) captionMove();
 }
 function replayNext() { if (!rp || reel) return; pause(); whenIdle(replayStep); refresh(); }
 function replayToggle() {
@@ -424,7 +428,7 @@ function replaySpeed() { if (!rp || reel) return; rp.speed = rp.speed >= 4 ? 1 :
 /** Called when a replayed move has finished animating: keep playing after a short beat. */
 function replayed() {
   if (!rp) return;
-  if (engine.history.length >= rp.moves.length) pause();
+  if (engine.history.length >= rp.moves.length) { pause(); if (rp.classic && !reel) classicEnd(); }
   refresh();
   if (!rp.playing) return;
   const r = rp, tok = rp.token;
@@ -435,6 +439,7 @@ function leaveReplay() {
   if (!rp) return;
   endReel(false);
   const b = rp.back;
+  if (rp.classic) classicCard();
   rp = null; clock.userScale = baseScale; queued = null;
   hud.replay(false); hud.closeShare();
   rig.director = mode === 'watch';
@@ -444,6 +449,38 @@ function leaveReplay() {
   if (over) showOver(refresh());
 }
 function replayExit() { if (reel) { reelExit(); return; } if (!rp) return; pause(); const r = rp; whenIdle(() => { if (rp === r) leaveReplay(); }); }
+
+// ---------- classics ----------
+// A classic is an ordinary replay (its link is the usual #g= record) that opens on a title card, plays
+// itself, names each move in a small caption as it is played, and closes on the source's verdict.
+/** Replay classic `i` from its first move. Returns false if it cannot start. */
+function playClassic(i: number): boolean {
+  const c = CLASSICS[i];
+  if (!c) return false;
+  let rec: { fen: string; moves: Ply[]; code: string; classic: Classic };
+  try { const d = classicRecord(c); rec = { fen: d.fen, moves: d.moves, code: encodeRecord(d.engine), classic: c }; }
+  catch (e) { console.warn('Bad classic:', e instanceof Error ? e.message : e); hud.toast('棋谱无效'); sfx.error(); return false; }
+  hud.closeClassics();
+  if (!rp && !queued) baseScale = clock.userScale;
+  whenIdle(() => {
+    endReel(false); openReplay(rec, 0);
+    const r = rp!;
+    card(c.title, 'd', 3, c.source);
+    // Autoplay once the title has had its moment (unless the viewer has taken over meanwhile).
+    void wait(2.6).then(() => { if (rp === r && !r.playing && !reel && !engine.history.length) replayToggle(); });
+  });
+  return true;
+}
+/** Show (or with no text, clear) the classic's card. Captions use the small form of the reel's title card. */
+function classicCard(text = '', sub = '', side: Caption['side'] = 'd', life = 0, small = false) { hud.reelCard(text, sub, side, life, small); burn.card = life ? caption(text, side, life, sub) : null; }
+function captionMove() {
+  const m = engine.history.at(-1)!, n = engine.history.length;
+  classicCard(traditional(m.notation), `第 ${n} 著`, m.piece.side, 2.4, true);
+}
+function classicEnd() {
+  const r = rp!, c = r.classic!;
+  void wait(1.4).then(() => { if (rp === r && !reel && engine.history.length >= r.moves.length) classicCard(c.result ?? '終', c.title, c.end?.winner ?? c.winner ?? 'd', 3.4); });
+}
 
 // ---------- highlight reel ----------
 // The reel is a replay that jumps (instantly, as a scrub does) to each clip from reel.ts and animates
@@ -621,6 +658,7 @@ hud.init({
   fine: (on) => { fineModels.on = on; if (busy) rebuildQueued = true; else { select(-1); sync(); } }, // mid-move: rebuild as soon as it ends
   replay: { enter: () => void enterReplay(), prev: replayPrev, next: replayNext, toggle: replayToggle, speed: replaySpeed, seek: replaySeek, exit: replayExit, share: shareInfo },
   reel: { start: () => void startReel(), export: () => void startReel(true), exit: reelExit },
+  classics: { list: CLASSICS, play: (i) => void playClassic(i) },
 });
 const qBtn = document.getElementById('btn-quality')!, showQ = () => { qBtn.querySelector('span')!.textContent = '画质 ' + { high: '高', mid: '中', low: '低' }[quality.tier]; };
 qBtn.onclick = () => void quality.set(quality.next());
@@ -712,6 +750,9 @@ const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(
   replayTo(ply: number) { replaySeek(ply); },
   replayStep: replayNext, replayToggle, replaySpeed,
   replayExit,
+  /** Titles of the classic games, and classic(i) to replay one (title card, autoplay, captions). */
+  classics() { return CLASSICS.map((c) => c.title); },
+  classic(i: number) { return playClassic(i); },
   /** Highlight clips of the game on screen (the replayed one during replay), in game order. */
   highlights() { const s = reelSource(); return highlights(s.fen, s.moves); },
   /** Play the highlight reel; reelExit() leaves it (and cancels an export). */

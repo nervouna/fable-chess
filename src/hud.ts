@@ -5,7 +5,9 @@ import { GLYPH } from './units';
 const $ = (id: string) => document.getElementById(id)!;
 
 export type Mode = 'pvp' | 'pve' | 'watch';
-export interface HudHandlers { reset(): void; undo(): void; restart(): void; mode(m: Mode): void; music(on: boolean): void; fine(on: boolean): void; autoCam(on: boolean): void; badges(on: boolean): void; sound(on: boolean): void; replay: ReplayHandlers; reel: ReelHandlers }
+export interface HudHandlers { reset(): void; undo(): void; restart(): void; mode(m: Mode): void; music(on: boolean): void; fine(on: boolean): void; autoCam(on: boolean): void; badges(on: boolean): void; sound(on: boolean): void; replay: ReplayHandlers; reel: ReelHandlers; classics: ClassicHandlers }
+/** The classic games: what the picker lists, and replaying one. */
+export interface ClassicHandlers { list: readonly { title: string; source: string; blurb: string }[]; play(i: number): void }
 /** Replay controls. `share` returns the link and the readable record of the game on screen. */
 /** Highlight reel: play it, play and record it, leave it (which also cancels a recording). */
 export interface ReelHandlers { start(): void; export(): void; exit(): void }
@@ -41,6 +43,17 @@ class Hud {
     $('rl-export').onclick = rl.export; $('rl-exit').onclick = rl.exit;
     $('video-close').onclick = () => this.closeVideo();
     $('video').onclick = (e) => { if (e.target === $('video')) this.closeVideo(); };
+    const cl = h.classics, list = $('cl-list');
+    cl.list.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.innerHTML = '<span class="t"></span><span class="s"></span><span class="b"></span>';
+      b.querySelector('.t')!.textContent = c.title; b.querySelector('.s')!.textContent = c.source; b.querySelector('.b')!.textContent = c.blurb;
+      b.onclick = () => cl.play(i);
+      list.append(b);
+    });
+    for (const id of ['btn-classics', 'rp-classics']) $(id).onclick = () => this.openClassics();
+    $('cl-close').onclick = () => this.closeClassics();
+    $('classics').onclick = (e) => { if (e.target === $('classics')) this.closeClassics(); };
     $('video-share').onclick = () => { // synchronously inside the click: share sheets need the gesture
       if (this.videoFile) navigator.share({ files: [this.videoFile], title: '楚漢爭鋒 · 集锦' }).catch(() => {});
     };
@@ -49,6 +62,7 @@ class Hud {
       const k = e.key.toLowerCase();
       if ((e.target as HTMLElement).id === 'share-url' && k !== 'escape') return; // the scrubber is exempt: its keys are ours
       if (k === 'escape' && this.videoOpen) { this.closeVideo(); return; }
+      if (this.classicsOpen) { if (k === 'escape') this.closeClassics(); return; } // the picker owns the keys (Tab, Enter, Space pick)
       if (this.reeling) {
         // The reel owns the keyboard: Esc leaves it, nothing else may move the board underneath.
         if (k === 'escape') rl.exit();
@@ -65,6 +79,7 @@ class Hud {
       if (k === 'escape' && this.shareOpen) this.closeShare();
       else if (k === 'p') r.enter();
       else if (k === 'l') rl.start();
+      else if (k === 'k') this.openClassics();
       else if (k === 'r' || k === ' ') { h.reset(); e.preventDefault(); }
       else if (k === 'z') h.undo();
       else if (k === 'n') h.restart();
@@ -203,15 +218,15 @@ class Hud {
     $('rl-text').textContent = (ex ? '导出中 · ' : '集锦 · ') + (i < n ? `其${no(i)} / ${no(n - 1)}${reason ? ' · ' + reason : ''}` : reason || '终局') + (ex ? ` · ${Math.round(progress * 100)}%` : '');
     $('rl-fill').style.width = Math.round(progress * 100) + '%';
   }
-  /** Title card over the board for `life` seconds (0 hides it). */
-  reelCard(text: string, sub: string, side: Side | 'd', life: number) {
+  /** Title card over the board for `life` seconds (0 hides it); `small` is the caption size. */
+  reelCard(text: string, sub: string, side: Side | 'd', life: number, small = false) {
     const c = $('reelcard');
     clearTimeout(this.cardTimer); c.className = '';
     if (!life) return;
     c.querySelector('.t')!.textContent = text; c.querySelector('.s')!.textContent = sub;
     void c.offsetWidth;
     c.style.animationDuration = life + 's';
-    c.className = 'show ' + side;
+    c.className = 'show ' + side + (small ? ' small' : '');
     this.cardTimer = window.setTimeout(() => { c.className = ''; }, life * 1000);
   }
   /** Offer an exported video: a download link, and the share sheet where files can be shared. */
@@ -234,6 +249,16 @@ class Hud {
     this.videoOpen = false; $('video').className = ''; this.videoFile = null;
     if (this.videoUrl) { URL.revokeObjectURL(this.videoUrl); this.videoUrl = ''; ($('video-dl') as HTMLAnchorElement).removeAttribute('href'); }
   }
+
+  // ---------- classics ----------
+  private classicsOpen = false;
+  /** The picker of classic games. */
+  openClassics() {
+    if (this.reeling) return;
+    this.closeShare(); this.classicsOpen = true; $('classics').className = 'show';
+    ($('cl-list').firstElementChild as HTMLElement | null)?.focus({ preventScroll: true });
+  }
+  closeClassics() { this.classicsOpen = false; $('classics').className = ''; }
 
   toast(text: string) {
     const t = $('toast');

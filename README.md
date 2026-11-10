@@ -97,6 +97,16 @@ Every push to `main` is tested, built and deployed to GitHub Pages.
 Quality is picked from the device on first load, then from your choice.
 Low and mid cap resolution, shadows and effects and use lighter models.
 
+On a phone or tablet:
+
+| Gesture | Action |
+| --- | --- |
+| Tap a unit, then a glowing ring | Move / capture |
+| One-finger drag | Orbit |
+| Pinch / two-finger twist | Zoom / turn the board |
+| Two-finger drag up or down | Tilt |
+| Double tap | Reset view |
+
 ## How it is built
 
 | File | Purpose |

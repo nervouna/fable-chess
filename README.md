@@ -77,8 +77,9 @@ npm test         # rules engine and AI: perft, tactics, 20 self-play games
 npm run build    # type-check and produce a static build in dist/
 ```
 
-The tests run TypeScript directly, so they need Node 23 or newer. Every push to `main` is tested, built
-and published to GitHub Pages by `.github/workflows/deploy.yml`.
+The tests run TypeScript directly and need Node 23 or newer.
+
+Every push to `main` is tested, built and deployed to GitHub Pages.
 
 ## Controls
 
@@ -117,12 +118,12 @@ desaturation, vignette) → ACES tone mapping.
 For scripted testing, `window.__game` exposes a small debug hook:
 
 ```js
-__game.load(fen)                    // set up a position
-__game.move('h2e2')                 // play a move, resolves when its animation ends
-__game.setMode('watch')             // 'pvp' | 'pve' | 'watch'
-__game.weather(time, storm, rain)   // pin the weather; call with no arguments to release it
-__game.fine(false)                  // switch to the code-built models
-__game.manual = true                // stop the frame loop, then drive it yourself:
+__game.load(fen)                   // set up a position
+__game.move('h2e2')                // resolves when the animation ends
+__game.setMode('watch')            // 'pvp' | 'pve' | 'watch'
+__game.weather(time, storm, rain)  // pin the weather; no arguments releases it
+__game.fine(false)                 // switch to the code-built models
+__game.manual = true               // stop the frame loop, then step it yourself
 await __game.advance(seconds)
 ```
 

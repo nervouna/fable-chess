@@ -4,7 +4,7 @@ import { GLYPH } from './units';
 
 const $ = (id: string) => document.getElementById(id)!;
 
-export type Mode = 'pvp' | 'pve' | 'watch';
+export type Mode = 'pvp' | 'pve' | 'watch' | 'net';
 export interface HudHandlers { reset(): void; undo(): void; restart(): void; mode(m: Mode): void; music(on: boolean): void; fine(on: boolean): void; autoCam(on: boolean): void; badges(on: boolean): void; sound(on: boolean): void; replay: ReplayHandlers; reel: ReelHandlers; classics: ClassicHandlers }
 /** The classic games: what the picker lists, and replaying one. */
 export interface ClassicHandlers { list: readonly { title: string; source: string; blurb: string }[]; play(i: number): void }
@@ -60,7 +60,8 @@ class Hud {
     window.addEventListener('keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if ((e.target as HTMLElement).id === 'share-url' && k !== 'escape') return; // the scrubber is exempt: its keys are ours
+      const el = e.target as HTMLElement;
+      if ((el.id === 'share-url' || el.closest?.('#net')) && k !== 'escape') return; // text fields keep their keys; the scrubber's are ours
       if (k === 'escape' && this.videoOpen) { this.closeVideo(); return; }
       if (this.classicsOpen) { if (k === 'escape') this.closeClassics(); return; } // the picker owns the keys (Tab, Enter, Space pick)
       if (this.reeling) {
@@ -94,8 +95,9 @@ class Hud {
   }
 
   setMode(m: Mode) {
-    for (const k of ['pvp', 'pve', 'watch']) $('mode-' + k).classList.toggle('on', k === m);
-    this.root.classList.toggle('watch', m === 'watch');
+    for (const k of ['pvp', 'pve', 'watch']) $('mode-' + k).classList.toggle('on', k === m || (k === 'pvp' && m === 'net'));
+    $('mode-pvp').textContent = m === 'net' ? '联机' : '双人'; // online play is the two-player mode's other half
+    this.root.classList.toggle('watch', m === 'watch'); this.root.classList.toggle('net', m === 'net');
   }
 
   setTurn(side: Side, check: boolean, over: boolean, thinking = false) {
@@ -200,7 +202,7 @@ class Hud {
   }
   closeShare() { this.shareOpen = false; $('share').className = ''; }
   /** Copy to the clipboard, falling back to a selected text field where the API is unavailable or refused. */
-  async copy(text: string, done: string) {
+  async copy(text: string, done: string, field = 'share-url') {
     try { await navigator.clipboard.writeText(text); this.toast(done); return; } catch { /* insecure context or no focus */ }
     const f = document.createElement('textarea');
     f.value = text; f.style.cssText = 'position:fixed;opacity:0;top:0;left:0'; document.body.append(f); f.select();
@@ -208,7 +210,7 @@ class Hud {
     try { ok = document.execCommand('copy'); } catch { /* unsupported */ }
     f.remove();
     this.toast(ok ? done : '复制失败，请手动复制');
-    if (!ok) ($('share-url') as HTMLInputElement).select();
+    if (!ok) ($(field) as HTMLInputElement).select();
   }
   // ---------- highlight reel ----------
   private reeling = false;

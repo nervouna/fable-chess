@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node test/engine.test.ts && node test/record.test.ts && node test/reel.test.ts && node test/ai.test.ts && node test/book.test.ts && node test/notation.test.ts && node test/classics.test.ts && node test/morale.test.ts"
+    "test": "node test/engine.test.ts && node test/record.test.ts && node test/reel.test.ts && node test/ai.test.ts && node test/book.test.ts && node test/notation.test.ts && node test/classics.test.ts && node test/net.test.ts && node test/morale.test.ts"
   },
   "dependencies": {
     "three": "^0.187.0"

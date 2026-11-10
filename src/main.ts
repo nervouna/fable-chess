@@ -33,6 +33,7 @@ import { highlights, type Clip } from './reel';
 import { Recorder, canRecord, type Caption, type Overlay, type Recording } from './capture';
 import { CLASSICS, classicRecord, type Classic } from './classics';
 import { traditional } from './notation';
+import { online } from './online';
 
 // ---------- renderer ----------
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -286,8 +287,9 @@ function select(i: number) {
   }
 }
 
-async function play(from: number, to: number): Promise<boolean> {
+async function play(from: number, to: number, remote = false): Promise<boolean> {
   if (busy || over) return false;
+  if (mode === 'net' && !rp && !remote && !netMove(from, to)) { sfx.error(); return false; } // the session validates and sends
   const m = engine.move(from, to);
   if (!m) { sfx.error(); return false; }
   scars.ply = engine.history.length;
@@ -339,7 +341,7 @@ async function play(from: number, to: number): Promise<boolean> {
   if (rebuildQueued) { rebuildQueued = false; sync(); }
   if (queued) { const f = queued; queued = null; hurry(false); f(); return true; }
   if (rp) { replayed(); return true; }
-  if (!over) void aiTurn(next);
+  if (mode === 'net') netSync(); else if (!over) void aiTurn(next);
   return true;
 }
 
@@ -391,21 +393,23 @@ function resetState() {
   thinking = false; lastAi = null; talk = fresh(); hud.remark('', '', 'r');
   select(-1); sync(); armies.snap();
   if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
-  if (!over) void aiTurn();
+  if (mode === 'net') netSync(); else if (!over) void aiTurn();
 }
 function setMode(m: Mode) {
   const was = mode;
   mode = m; hud.setMode(m);
+  if (was === 'net' && m !== 'net') online.leave(); // closes the connection; the board stays as a local game
   if (m === 'watch' && was !== 'watch' && !rp) rollPairing(false);
   if (m === 'pve' && styles.b !== pveStyle) { styles.b = pveStyle; styleGen++; }
   rig.director = m === 'watch' || !!rp?.playing;
-  if (m !== 'watch' && !rp) rig.reset(m === 'pve' ? 'r' : engine.turn);
+  if (m !== 'watch' && !rp) rig.reset(m === 'pve' ? 'r' : viewSide());
   thinking = false;
   if (!busy) { refresh(); if (!over) void aiTurn(); else void autoRestart(generation); }
 }
 function undo() {
   if (reel) return;
   if (rp) { replayPrev(); return; }
+  if (mode === 'net') { online.offer('undo'); return; } // negotiated with the peer
   if (busy || mode === 'watch') { sfx.error(); return; }
   if (!engine.undo()) { sfx.error(); return; }
   // Against the computer, also take back its reply so it is the human's turn again.
@@ -415,11 +419,45 @@ function undo() {
 function restart(auto = false) {
   if (reel && auto) return;
   if (rp) { const r = rp; whenIdle(() => { if (rp !== r) return; leaveReplay(); restart(); }); return; }
+  if (mode === 'net') { if (!auto) online.restart(); return; } // a rematch once the game is over
   if (busy && !auto) return;
   engine.load(START_FEN); sfx.drum();
   if (mode === 'watch') rollPairing(false);
   resetState();
   if (mode !== 'watch') rig.reset('r');
+}
+
+// ---------- online play ----------
+// The session (online.ts, netgame.ts) owns the authoritative game; the board mirrors it. Our moves go
+// through the session first, which refuses them out of turn; the peer's moves are animated one by one
+// through play(), never interrupting a running move. Replay, the reel and the classics are off in net
+// mode (leave it and the finished game can be replayed).
+let netGameNo = -1;
+const viewSide = (): Side => (mode === 'net' ? online.game?.side ?? 'r' : engine.turn);
+/** In net mode, input waits unless it is our turn in a live session. */
+const netWait = () => mode === 'net' && !online.game?.myTurn;
+function netMove(from: number, to: number) { const g = online.game; return !!g && engine.history.length === g.ply && g.move(from, to); }
+function netBlock() { if (mode !== 'net') return false; hud.toast('联机对局中不能复盘 · 离开联机后可用'); sfx.error(); return true; }
+/** Bring the board up to the session's game: animate the next move it lacks, or rebuild it instantly
+ *  when they differ otherwise (undo, resync, rematch, resume); show an agreed result. */
+function netSync() {
+  const g = online.game;
+  if (mode !== 'net' || !g?.ready || rp || busy) return;
+  const s = g.engine.history, d = engine.history;
+  if (netGameNo !== g.game || d.length > s.length || d.some((m, i) => m.from !== s[i].from || m.to !== s[i].to)) {
+    const fresh = netGameNo !== g.game;
+    netGameNo = g.game;
+    rebuild(startFen(g.engine), plies(g.engine)); resetState(); // which comes back here for the result
+    if (fresh) rig.reset(g.side);
+    if (over && !g.result) showOver(engine.status());
+    return;
+  }
+  if (d.length < s.length) { void play(s[d.length].from, s[d.length].to, true); return; }
+  if (g.result && !over) {
+    over = true; refresh();
+    flash(g.result.reason === 'resign' ? '認輸' : '和棋', g.result.winner ?? engine.turn); sfx.gong();
+    hud.gameOver(g.result.winner, g.result.reason === 'resign' ? '认 输' : '议 和');
+  }
 }
 
 // ---------- replay ----------
@@ -435,6 +473,7 @@ const plies = (e: Engine) => e.history.map((m) => ({ from: m.from, to: m.to }));
 function rebuild(fen: string, moves: Ply[]) { engine.load(fen); for (const m of moves) engine.move(m.from, m.to); }
 /** Enter replay of `text` (a record or link), or of the game on screen. Returns false for a bad record. */
 function enterReplay(text?: string): boolean {
+  if (netBlock()) return false;
   if (text === undefined && rp) return true;
   let rec: { fen: string; moves: Ply[]; code: string };
   try {
@@ -520,7 +559,7 @@ function replayExit() { if (reel) { reelExit(); return; } if (!rp) return; pause
 /** Replay classic `i` from its first move. Returns false if it cannot start. */
 function playClassic(i: number): boolean {
   const c = CLASSICS[i];
-  if (!c) return false;
+  if (!c || netBlock()) return false;
   let rec: { fen: string; moves: Ply[]; code: string; classic: Classic };
   try { const d = classicRecord(c); rec = { fen: d.fen, moves: d.moves, code: encodeRecord(d.engine), classic: c }; }
   catch (e) { console.warn('Bad classic:', e instanceof Error ? e.message : e); hud.toast('棋谱无效'); sfx.error(); return false; }
@@ -561,6 +600,7 @@ const settle = (r: Recording | null) => { const f = exportWait; exportWait = nul
 function card(text: string, side: Caption['side'], life: number, sub?: string) { hud.reelCard(text, sub ?? '', side, life); burn.card = caption(text, side, life, sub); }
 /** Play the highlight reel; with `record`, also export it as a video. Returns false if it cannot start. */
 function startReel(record = false): boolean {
+  if (netBlock()) return false;
   if (record && !canRecord()) { hud.toast('此浏览器不支持导出视频'); sfx.error(); return false; }
   if (!reel && !reelSource().moves.length) { hud.toast('尚未落子'); sfx.error(); return false; }
   if (record) sfx.unlock(); // inside the click, so the recording can carry sound
@@ -668,6 +708,7 @@ window.addEventListener('hashchange', fromHash);
 window.addEventListener('paste', (e) => {
   const t = e.clipboardData?.getData('text') ?? '';
   if ((e.target as HTMLElement).tagName === 'INPUT' || !t.trim()) return;
+  if (t.includes('#join=')) { void online.join(t).catch(() => {}); return; } // an invite: join that room
   enterReplay(t);
 });
 
@@ -692,7 +733,7 @@ function pickSquare(ndc: THREE.Vector2): number {
 
 rig.onClick = (ndc) => {
   sfx.unlock();
-  if (busy || over || rp || isAI(engine.turn)) return;
+  if (busy || over || rp || isAI(engine.turn) || netWait()) return;
   const i = pickSquare(ndc);
   if (i < 0) { select(-1); return; }
   const p = engine.board[i];
@@ -701,20 +742,25 @@ rig.onClick = (ndc) => {
   else { if (selected >= 0 || p) sfx.error(); select(-1); }
 };
 rig.onHover = (ndc) => {
-  if (busy || over || rp || isAI(engine.turn)) { canvas.classList.remove('pointing'); hoverRing.visible = false; return; }
+  if (busy || over || rp || isAI(engine.turn) || netWait()) { canvas.classList.remove('pointing'); hoverRing.visible = false; return; }
   const i = pickSquare(ndc), p = i >= 0 ? engine.board[i] : null;
   const can = i >= 0 && ((p && p.side === engine.turn) || legal.includes(i));
   canvas.classList.toggle('pointing', !!can);
   hoverRing.visible = !!can && i !== selected;
   if (can) { sqPos(i, hoverRing.position); hoverRing.position.y = Math.max(hoverRing.position.y, -0.18) + 0.06; }
 };
-rig.onDoubleTap = () => rig.reset(engine.turn);
+rig.onDoubleTap = () => rig.reset(viewSide());
 window.addEventListener('keydown', () => sfx.unlock(), { once: true });
 window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 
 hud.init({
-  reset: () => rig.reset(engine.turn),
-  undo, restart: () => restart(), mode: (m) => (m === mode && m !== 'pvp' && !rp ? cycleStyle() : setMode(m)), // again: change style
+  reset: () => rig.reset(viewSide()),
+  undo, restart: () => restart(),
+  mode: (m) => {
+    if (m === 'pvp' && (mode === 'pvp' || mode === 'net') && !rp) online.open(true); // 双人 again: 本机 or 联机
+    else if (m === mode && !rp) cycleStyle(); // 人机 / 观战 again: change style
+    else if (mode !== 'net' || online.confirmLeave()) setMode(m);
+  },
   autoCam: (on) => { opts.autoCam = on; if (on && mode === 'pvp') rig.faceSide(engine.turn); },
   badges: (on) => { opts.badges = on; for (const u of units.values()) u.badge.visible = on && !u.busy; },
   sound: (on) => { sfx.unlock(); sfx.setMuted(!on); },
@@ -723,6 +769,13 @@ hud.init({
   replay: { enter: () => void enterReplay(), prev: replayPrev, next: replayNext, toggle: replayToggle, speed: replaySpeed, seek: replaySeek, exit: replayExit, share: shareInfo },
   reel: { start: () => void startReel(), export: () => void startReel(true), exit: reelExit },
   classics: { list: CLASSICS, play: (i) => void playClassic(i) },
+});
+online.init({
+  active: () => mode === 'net',
+  // A session is ready: leave any replay or reel (once the running move ends), then show its game.
+  begin: () => whenIdle(() => { endReel(false); if (rp) leaveReplay(); netGameNo = -1; if (mode !== 'net') setMode('net'); netSync(); }),
+  update: () => netSync(),
+  quit: () => setMode('pvp'),
 });
 const qBtn = document.getElementById('btn-quality')!, showQ = () => { qBtn.querySelector('span')!.textContent = '画质 ' + { high: '高', mid: '中', low: '低' }[quality.tier]; };
 qBtn.onclick = () => void quality.set(quality.next());
@@ -786,6 +839,7 @@ rig.reset('r');
 requestAnimationFrame(frame);
 quality.probe(() => manual || !!reel);
 fromHash();
+online.fromHash();
 
 // ---------- debug / test hook ----------
 const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
@@ -816,10 +870,12 @@ const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(
   set manual(v: boolean) { manual = v; },
   /** Switch between authored models and the original procedural ones (rebuilds every unit). */
   fine(on: boolean) { if (busy) return false; fineModels.on = on; select(-1); sync(); return true; },
-  load(fen: string) { if (rp) leaveReplay(); engine.load(fen); resetState(); },
+  load(fen: string) { if (mode === 'net') return; if (rp) leaveReplay(); engine.load(fen); resetState(); },
   move(s: string) { return rp ? Promise.resolve(false) : play(sq(s.slice(0, 2)), sq(s.slice(2, 4))); },
   click(s: string) { if (rp) return []; const i = sq(s), p = engine.board[i]; if (selected >= 0 && legal.includes(i)) return play(selected, i); if (p && p.side === engine.turn) select(i); return legal.map(sqName); },
   undo, restart, setMode,
+  /** Online play: host() / join(invite) / accept(reply) / state / send(raw) / leave(). */
+  net: online.debug,
   /** Compact record of the game (the replayed one during replay), as used in `#g=` links. */
   record() { return rp ? rp.code : encodeRecord(engine); },
   /** Readable record: ICCS moves with the traditional notation. */

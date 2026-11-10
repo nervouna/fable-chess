@@ -1,0 +1,26 @@
+{
+  "name": "fable-chess",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "node test/engine.test.ts && node test/ai.test.ts"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7"
+  },
+  "description": "楚漢爭鋒: xiangqi staged as a cinematic 3D battle, with an AI opponent and Blender-generated armies",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nervouna/fable-chess.git"
+  },
+  "private": true
+}

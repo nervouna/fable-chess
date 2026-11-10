@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>楚漢爭鋒 · 3D 中国象棋</title>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div id="hud">
+      <div class="bar top"></div>
+      <div class="bar bottom"></div>
+
+      <header class="topbar">
+        <div class="camp b" id="camp-b">
+          <div class="seal">黑</div>
+          <div class="info"><div class="label">黑方 · 楚</div><div class="tray" id="tray-b"></div></div>
+        </div>
+        <div class="title">
+          <div class="name">楚漢爭鋒</div>
+          <div class="turn" id="turn">红方行棋</div>
+        </div>
+        <div class="camp r" id="camp-r">
+          <div class="info"><div class="label">红方 · 漢</div><div class="tray" id="tray-r"></div></div>
+          <div class="seal">红</div>
+        </div>
+      </header>
+
+      <aside class="panel moves">
+        <div class="hd">棋 谱</div>
+        <ol id="moves"></ol>
+      </aside>
+
+      <aside class="panel tools">
+        <div class="modes" title="对弈模式 (1 / 2 / 3)">
+          <button id="mode-pvp" class="on">双人</button><button id="mode-pve">人机</button><button id="mode-watch">观战</button>
+        </div>
+        <hr />
+        <button id="btn-reset" title="重置视角 (R)"><b>⟲</b><span>重置视角</span><kbd>R</kbd></button>
+        <button id="btn-undo" title="悔棋 (Z)"><b>↶</b><span>悔棋</span><kbd>Z</kbd></button>
+        <button id="btn-new" title="重新开始 (N)"><b>✦</b><span>新局</span><kbd>N</kbd></button>
+        <hr />
+        <button id="btn-cam" class="toggle on" title="换手时自动转向当前玩家 (C)"><b>⇄</b><span>自动转镜</span><kbd>C</kbd></button>
+        <button id="btn-fine" class="toggle on" title="使用 Blender 精模 (H)"><b>模</b><span>精模</span><kbd>H</kbd></button>
+        <button id="btn-badge" class="toggle on" title="显示兵种徽记 (G)"><b>字</b><span>兵种徽记</span><kbd>G</kbd></button>
+        <button id="btn-sound" class="toggle on" title="音效 (M)"><b>♪</b><span>音效</span><kbd>M</kbd></button>
+        <button id="btn-music" class="toggle on" title="配乐 (B)"><b>鼓</b><span>配乐</span><kbd>B</kbd></button>
+      </aside>
+
+      <div class="hint">左键拖动 旋转 · 滚轮 缩放 · 右键拖动 平移 · 点击棋子后点击光圈落子</div>
+
+      <div id="banner"><span></span></div>
+      <div id="duel"><div class="vs"><i class="a"></i><em>破</em><i class="v"></i></div><div class="nm"></div></div>
+
+      <div id="over">
+        <div class="card">
+          <div class="big" id="over-title">红方胜</div>
+          <div class="sub" id="over-sub">绝杀</div>
+          <div class="row"><button id="over-new">再战一局</button><button id="over-undo">悔棋</button></div>
+        </div>
+      </div>
+
+      <div id="intro"><div class="big">楚漢爭鋒</div><div class="sub">3D 中 国 象 棋</div></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

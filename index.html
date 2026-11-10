@@ -31,6 +31,7 @@
         <div class="title">
           <div class="name">楚漢爭鋒</div>
           <div class="turn" id="turn">红方行棋</div>
+          <div id="netchip"></div>
         </div>
         <div class="camp r" id="camp-r">
           <div class="info"><div class="label">红方 · 漢</div><div class="tray" id="tray-r"></div></div>
@@ -45,7 +46,7 @@
 
       <aside class="panel tools">
         <div class="modes" title="对弈模式 (1 / 2 / 3)">
-          <button id="mode-pvp" class="on">双人</button><button id="mode-pve" title="人机对弈 (2) · 再点一次切换黑方棋风">人机</button><button id="mode-watch" title="观战 (3) · 再点一次重抽双方棋风">观战</button>
+          <button id="mode-pvp" class="on" title="双人 (1) · 再点一次选择本机或联机">双人</button><button id="mode-pve" title="人机对弈 (2) · 再点一次切换黑方棋风">人机</button><button id="mode-watch" title="观战 (3) · 再点一次重抽双方棋风">观战</button>
         </div>
         <hr />
         <button id="btn-reset" title="重置视角 (R)"><b>⟲</b><span>重置视角</span><kbd>R</kbd></button>
@@ -106,6 +107,35 @@
           <div class="row"><button id="cl-close">关闭</button></div>
         </div>
       </div>
+      <div id="net">
+        <div class="card">
+          <div class="hd" id="net-hd">联机对弈</div>
+          <div class="v pick"><div class="row"><button id="net-local">本机双人</button><button id="net-online">联机对弈</button></div></div>
+          <div class="v host">
+            <div class="note">创建房间，把邀请链接发给好友。选择执子：</div>
+            <div class="row"><button id="net-red">执红</button><button id="net-black">执黑</button><button id="net-random">随机</button></div>
+            <div class="row"><button id="net-resume">续弈此局</button></div>
+          </div>
+          <div class="v invite">
+            <label for="net-invite">① 把邀请链接发给对方</label>
+            <input id="net-invite" readonly />
+            <div class="row"><button id="net-copy">复制邀请</button><button id="net-share">分享</button></div>
+            <label for="net-reply">② 粘贴对方发回的回复码</label>
+            <input id="net-reply" autocomplete="off" spellcheck="false" placeholder="回复码" />
+            <div class="row"><button id="net-accept">连接</button></div>
+          </div>
+          <div class="v guest">
+            <label for="net-answer">把回复码发回给房主</label>
+            <input id="net-answer" readonly />
+            <div class="row"><button id="net-copy-reply">复制回复码</button></div>
+          </div>
+          <div class="v live"><div class="row"><button id="net-draw">求和</button><button id="net-undo">悔棋</button><button id="net-resign">认输</button></div></div>
+          <div class="status" id="net-status"></div>
+          <div class="note fine">双方直接连接，彼此可见对方 IP 地址 · 无中转服务器，部分网络（对称 NAT）无法连通</div>
+          <div class="row"><button id="net-leave">离开联机</button><button id="net-close">关闭</button></div>
+        </div>
+      </div>
+      <div id="ask"><span class="t"></span><button id="ask-yes">接受</button><button id="ask-no">拒绝</button></div>
       <div id="reelcard"><span class="t"></span><span class="s"></span></div>
       <div id="reelbar">
         <div class="info"><span id="rl-text">集锦</span><div class="prog"><i id="rl-fill"></i></div></div>

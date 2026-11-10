@@ -205,6 +205,50 @@ html, body {
 #toast { position: absolute; left: 50%; top: 22%; transform: translate(-50%, 8px); padding: 8px 18px; font-size: 15px; letter-spacing: 0.1em; color: #fff3d6; background: rgba(14, 10, 9, 0.88); border: 1px solid var(--line); border-radius: 3px; opacity: 0; transition: opacity 0.25s, transform 0.25s; z-index: 10; white-space: nowrap; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+/* Online play: the 联机 card (the share card's frame), the connection chip, and request prompts */
+#net { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.5); opacity: 0; visibility: hidden; transition: opacity 0.25s, visibility 0.25s; z-index: 9; pointer-events: auto; }
+#net.show { opacity: 1; visibility: visible; }
+#net .card { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 24px - var(--sa-t) - var(--sa-b)); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 14px 16px; text-align: center; background: linear-gradient(180deg, rgba(40, 14, 10, 0.94), rgba(14, 10, 9, 0.94)); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); }
+#net .hd { font-size: 20px; letter-spacing: 0.4em; margin-right: -0.4em; color: var(--gold); }
+#net .v { display: none; margin-top: 10px; }
+#net.pick .pick, #net.host .host, #net.invite .invite, #net.guest .guest, #net.live .live { display: block; }
+#net label { display: block; margin: 8px 0 4px; font-size: 14px; letter-spacing: 0.08em; color: #c9b891; text-align: left; }
+#net input { width: 100%; margin-bottom: 6px; padding: 8px; font: 12px ui-monospace, monospace; color: #eadfc6; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line); border-radius: 3px; -webkit-user-select: text; user-select: text; pointer-events: auto; }
+#net input:focus { outline: none; border-color: rgba(233, 192, 112, 0.6); }
+#net .row { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }
+#net button { flex: 1; min-height: 44px; padding: 8px 6px; font-size: 16px; letter-spacing: 0.1em; color: var(--gold); background: rgba(14, 10, 9, 0.7); border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+#net .v .row button:first-child { color: #1b0f08; background: linear-gradient(180deg, #f5d48a, #c99a45); border-color: transparent; }
+#net button:hover:not(:disabled) { filter: brightness(1.12); }
+#net button:disabled { opacity: 0.4; cursor: default; }
+#net .note { margin-top: 2px; font-size: 13px; color: #b5a688; letter-spacing: 0.05em; }
+#net .note.fine { margin-top: 10px; font-size: 12px; color: #8a7d68; line-height: 1.5; }
+#net .status { min-height: 1.4em; margin-top: 10px; font-size: 14px; letter-spacing: 0.08em; color: #fff3d6; }
+#net .status:empty { display: none; }
+#net > .card > .row { margin-top: 10px; }
+@media (pointer: coarse) { #net input { min-height: 44px; font-size: 16px; } } /* 16px: no zoom on focus in iOS */
+/* Short landscape screens: each code field sits beside its button. */
+@media (max-height: 500px) {
+  #net .card { width: min(560px, calc(100vw - 32px)); padding: 8px 12px; }
+  #net.invite .invite, #net.guest .guest { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; margin-top: 4px; }
+  #net .v label { grid-column: 1 / -1; margin: 2px 0 0; }
+  #net .invite input, #net .guest input { margin: 0; }
+  #net .invite .row, #net .guest .row { margin: 0; } #net .invite .row button, #net .guest .row button { min-width: 96px; }
+  #net .status { margin-top: 6px; } #net .note.fine { margin-top: 4px; } #net > .card > .row { margin-top: 6px; }
+}
+#netchip { display: none; margin: 2px auto 0; font-size: 11px; letter-spacing: 0.12em; color: #c9b891; white-space: nowrap; }
+#netchip.show { display: block; }
+#netchip::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #e9c070; vertical-align: 1px; }
+#netchip.open::before { background: #6fdc8c; box-shadow: 0 0 6px #6fdc8c; }
+#netchip.closed::before, #netchip.unstable::before, #netchip.idle::before { background: var(--red); }
+#netchip.hosting::before, #netchip.joining::before, #netchip.connecting::before { animation: blink 1s steps(2) infinite; }
+#ask { position: absolute; top: calc(94px + var(--sa-t)); left: 50%; transform: translate(-50%, -8px); display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 16px; background: rgba(14, 10, 9, 0.9); border: 1px solid rgba(233, 192, 112, 0.5); border-radius: 4px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); opacity: 0; visibility: hidden; transition: opacity 0.25s, transform 0.25s, visibility 0.25s; z-index: 8; pointer-events: auto; white-space: nowrap; }
+#ask.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+#ask .t { font-size: 16px; letter-spacing: 0.12em; color: #fff3d6; margin-right: 4px; }
+#ask button { min-width: 64px; min-height: 44px; padding: 6px 12px; font-size: 15px; letter-spacing: 0.1em; color: var(--gold); background: rgba(14, 10, 9, 0.7); border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+#ask #ask-yes { color: #1b0f08; background: linear-gradient(180deg, #f5d48a, #c99a45); border-color: transparent; }
+/* In net mode the result card offers only the rematch (replay is off until you leave net mode). */
+#hud.net #over-replay, #hud.net #over-reel, #hud.net #over-undo { display: none; }
+
 /* Intro title */
 #intro { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.85)); animation: intro 3.4s ease forwards; z-index: 8; }
 #intro .big { font-size: clamp(60px, 11vw, 160px); letter-spacing: 0.3em; margin-right: -0.3em; color: #fff3d6; text-shadow: 0 0 40px rgba(255, 150, 50, 0.9), 0 0 120px rgba(255, 80, 0, 0.6); }
@@ -260,6 +304,8 @@ html, body {
   #reelbar button b { font-size: 16px; line-height: 1.1; }
   #rl-text { font-size: 13px; }
   #remark { top: calc(56px + var(--sa-t)); padding: 3px 18px 4px; } #remark .t { font-size: 16px; letter-spacing: 0.12em; margin-right: -0.12em; }
+  #netchip { font-size: 10px; margin-top: 0; letter-spacing: 0.06em; }
+  #ask { top: calc(64px + var(--sa-t)); padding-left: 10px; } #ask .t { font-size: 14px; letter-spacing: 0.06em; }
   #reelcard { top: 17%; } #reelcard .t { font-size: clamp(28px, 7.6vw, 60px); letter-spacing: 0.1em; margin-right: -0.1em; }
 }
 @media (max-width: 760px) and (orientation: portrait) {

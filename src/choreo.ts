@@ -47,13 +47,17 @@ function wadeWarp(u: Unit, x0: number, z0: number, x1: number, z1: number) {
   };
 }
 
-/** Move the unit along the ground. onStep gets eased progress and the distance covered this frame. */
+/**
+ * Move the unit along the ground. onStep gets eased progress and the distance covered this frame.
+ * A path through open water wades it; one that grazes a bridge keeps to the old ford (no deck clipping).
+ */
 function travel(u: Unit, to: THREE.Vector3, dur: number, e = ease.lin, onStep?: (k: number, d: number) => void) {
-  const x0 = u.root.position.x, z0 = u.root.position.z, warp = wadeWarp(u, x0, z0, to.x, to.z), w = WADE[u.piece.type].weight;
+  const x0 = u.root.position.x, z0 = u.root.position.z, wet = clearOfBridges(x0, z0, to.x, to.z);
+  const warp = wet ? wadeWarp(u, x0, z0, to.x, to.z) : null, w = WADE[u.piece.type].weight;
   let px = x0, pz = z0;
   return tween(dur * (warp?.stretch ?? 1), (t) => {
     const k = warp ? warp.at(e(t)) : e(t), x = lerp(x0, to.x, k), z = lerp(z0, to.z, k);
-    u.setXZ(x, z);
+    u.setXZ(x, z, wet);
     const d = Math.hypot(x - px, z - pz); px = x; pz = z;
     onStep?.(k, d);
     if (u.body.position.y < 0.3) river.wade(u.water, u.root.position, w, d);
@@ -509,6 +513,7 @@ const ATTACK: Record<PType, Record<Klass, AttackFn>> = {
       const p = u.parts, r = p.rider, side = V().set(dir.z, 0, -dir.x);
       // Bow the gallop towards the (always empty) leg square so it clears the diagonal neighbour.
       const x0 = u.root.position.x, z0 = u.root.position.z;
+      const wet = clearOfBridges(x0, z0, to.x, to.z, 1.9);
       const bow = 0.5 * Math.sign(Math.abs(to.x - x0) > Math.abs(to.z - z0) ? (to.x - x0) * side.x : (to.z - z0) * side.z);
       sfx.neigh();
       let struck = false;
@@ -516,7 +521,7 @@ const ATTACK: Record<PType, Record<Klass, AttackFn>> = {
       await travel(u, to, 0.62, (t) => t * t * (3 - 2 * t), (k) => {
         gallopPose(p, k * 4 * Math.PI, 0.75); beat(k);
         const off = bow * Math.sin(Math.PI * k);
-        u.setXZ(lerp(x0, to.x, k) + side.x * off, lerp(z0, to.z, k) + side.z * off);
+        u.setXZ(lerp(x0, to.x, k) + side.x * off, lerp(z0, to.z, k) + side.z * off, wet);
         const a = Math.min(1, Math.max(0, (k - 0.4) / 0.3)); // only reach out once past the neighbour
         r.armR.rotation.x = lerp(-0.2, -1.2, a); r.armR.rotation.z = lerp(-0.25, -1.25, a); p.weapon.rotation.x = lerp(0.2, 1.75, a); r.torso.rotation.x = 0.35 * a;
         if (!struck && u.root.position.distanceTo(to) < 1.75) {

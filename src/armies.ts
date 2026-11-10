@@ -62,7 +62,7 @@ function drummerGeo(side: Side) {
     ...[-1, 1].flatMap((sx) => [paint(at(box(0.09, 0.09, 0.42), sx * 0.22, 1.02, 0.22), T.main, 1), paint(at(box(0.04, 0.04, 0.55), sx * 0.22, 1.0, 0.6), 0x3a2414, 1)]),
   ]);
 }
-/** A war drum on its stand, the near skin tilted up towards a drummer standing at local z = -0.9. */
+/** A war drum on its stand, the near skin tilted up towards a drummer on a step at local z = -0.9. */
 function drumGeo(side: Side) {
   const T = TEAM[side], rx = (g: THREE.BufferGeometry) => g.rotateX(Math.PI / 2);
   const drum = [
@@ -70,7 +70,7 @@ function drumGeo(side: Side) {
     paint(rx(at(cyl(0.53, 0.53, 0.06, 14), 0, 0.27, 0)), T.trim), paint(rx(at(cyl(0.53, 0.53, 0.06, 14), 0, -0.27, 0)), T.trim),
   ].map((g) => g.rotateX(0.55).translate(0, 0.98, 0));
   const legs = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => paint(at(box(0.08, 0.8, 0.08), sx * 0.42, 0.4, sz * 0.27), 0x4a3220)));
-  return merge([...drum, ...legs, paint(at(box(0.98, 0.07, 0.66), 0, 0.5, 0), 0x4a3220)]);
+  return merge([...drum, ...legs, paint(at(box(0.98, 0.07, 0.66), 0, 0.5, 0), 0x4a3220), paint(at(box(0.9, 0.4, 0.75), 0, 0.2, -0.95), 0x5b4a36)]); // and the drummer's step
 }
 function poleGeo(h: number, trim: number) {
   return merge([paint(at(cyl(0.06, 0.09, h, 6), 0, h / 2, 0), 0x4e3420), paint(at(sph(0.13, 6, 4), 0, h + 0.08, 0), trim), paint(at(box(0.08, 0.08, 0.5), 0, h - 0.3, 0), 0x4e3420)]);
@@ -152,7 +152,12 @@ class Armies {
     // Banners: two on the flanks of the front rank, two deep by the fortress wall.
     const wind = { value: 1 };
     const tex = glyphTexture(side === 'r' ? '漢' : '楚', { w: 256, h: 160, bg: side === 'r' ? '#a51e18' : '#1b2636', fg: '#f6d27a', size: 120, border: '#e2b04a' });
-    const flagMat = clothMat(0xffffff, tex, 'flag', wind), pole = poleGeo(6.2, T.trim);
+    const flagMat = clothMat(0xffffff, tex, 'flag', wind), pole = poleGeo(6.2, T.trim), cloth = flagMat.onBeforeCompile;
+    flagMat.onBeforeCompile = (sh, r) => { // the glyph reads the right way round from either side of the cloth
+      cloth.call(flagMat, sh, r);
+      sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>',
+        THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, gl_FrontFacing ? vMapUv : vec2( 1.0 - vMapUv.x, vMapUv.y ) )'));
+    };
     pole.userData.shared = true;
     const banners: Banner[] = [];
     for (const [x, z, w] of [[-13.4, 13.4, 2.7], [13.4, 13.4, 2.7], [-4.6, 19.6, 3.2], [4.6, 19.6, 3.2]]) {
@@ -259,9 +264,10 @@ class Armies {
       R.count = n; R.instanceMatrix.needsUpdate = true; arm.needsUpdate = true;
       // Drums: an idle beat now and then, hammering through a check, a roll for a cheer and the victory.
       const beat = lost ? 0 : Math.max(checking ? 1 : 0.18, cheer, won ? 1 : 0), rate = checking || won ? 9 : cheer > 0 ? 16 : 4;
+      const back = new THREE.Vector3(-Math.sin(h.yaw), 0, -Math.cos(h.yaw)).multiplyScalar(0.9);
       h.drums.forEach((d, i) => {
         const st = Math.abs(Math.sin(t * rate * 0.5 + i * 1.3)), hit = beat * Math.pow(1 - st, 6);
-        o.position.copy(d.position).addScaledVector(new THREE.Vector3(Math.sin(h.yaw), 0, Math.cos(h.yaw)), -0.9); o.position.y = GROUND - 0.3 * (lost ? fin : 0);
+        o.position.copy(d.position).add(back); o.position.y = GROUND + 0.4 - 0.3 * (lost ? fin : 0);
         o.rotation.set(lost ? 0.4 * fin : 0, h.yaw, 0, 'YXZ'); o.scale.set(1, 1 - (lost ? 0.18 * fin : 0), 1); o.updateMatrix();
         h.drummers.setMatrixAt(i, o.matrix); h.darm.setXY(i, 0, lost ? 0.9 * fin : -(0.15 + 1.1 * beat * st));
         d.scale.setScalar(1 + 0.05 * hit);

@@ -186,6 +186,7 @@ __game.state.ai                    // last AI move: { score, depth, book, openin
 __game.weather(time, storm, rain)  // pin the weather; no arguments releases it
 __game.morale()                    // { r, b } in 0..1, from the material on the board
 __game.cheer('r')                  // make one side's reserves cheer
+__game.armies                      // the reserves module, for inspection
 __game.record()                    // compact record of the game, as in #g= links
 __game.replay(text?)               // replay a record, or the current game
 __game.replayTo(ply)               // jump to a ply; replayExit() leaves

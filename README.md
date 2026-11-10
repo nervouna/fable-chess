@@ -93,6 +93,16 @@ Every push to `main` is tested, built and deployed to GitHub Pages.
 | `C` / `G` / `M` / `B` | Toggle auto camera / unit glyph badges / sound / music |
 | `H` | Toggle authored models (falls back to the original code-built ones) |
 
+On a phone or tablet:
+
+| Gesture | Action |
+| --- | --- |
+| Tap a unit, then a glowing ring | Move / capture |
+| One-finger drag | Orbit |
+| Pinch / two-finger twist | Zoom / turn the board |
+| Two-finger drag up or down | Tilt |
+| Double tap | Reset view |
+
 ## How it is built
 
 | File | Purpose |

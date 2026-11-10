@@ -7,7 +7,13 @@ import type { Piece } from './engine';
 const K = 1, A = 2, B = 3, N = 4, R = 5, C = 6, P = 7;
 const TYPE_CODE: Record<string, number> = { K, A, B, N, R, C, P };
 const VAL = [0, 10000, 120, 120, 270, 600, 285, 30];
-const MATE = 30000, INF = 32000, CONTEMPT = 40;
+const MATE = 30000, INF = 32000;
+
+/** Playing styles. Balanced is the original evaluation, number for number. */
+export type Style = 'balanced' | 'aggressive' | 'solid';
+export const STYLES: Style[] = ['balanced', 'aggressive', 'solid'];
+/** Penalty the root side sees for a repetition: aggressive refuses draws it is not losing, solid takes them. */
+const CONTEMPT: Record<Style, number> = { balanced: 40, aggressive: 110, solid: 0 };
 
 export interface AiRequest {
   board: number[]; turn: 0 | 1;
@@ -16,8 +22,12 @@ export interface AiRequest {
   timeMs?: number; depth?: number;
   /** Pick at random among near-equal moves (opening variety). */
   variety?: boolean;
+  /** Playing style of the side to move (default balanced). */
+  style?: Style;
+  /** Answer from the opening book when the position is in it (handled by the worker, not search()). */
+  book?: boolean;
 }
-export interface AiResult { from: number; to: number; score: number; depth: number; nodes: number }
+export interface AiResult { from: number; to: number; score: number; depth: number; nodes: number; /** played from the opening book */ book?: boolean }
 
 export const encode = (board: (Piece | null)[]): number[] => board.map((p) => (p ? TYPE_CODE[p.type] + (p.side === 'b' ? 8 : 0) : 0));
 
@@ -75,6 +85,60 @@ for (let code = 0; code < 16; code++) {
   PST.push(a);
 }
 
+// Style tables: the balanced table plus small deltas. `own` applies to the searching side's pieces,
+// `foe` to the opponent's (as the searching side values them). rr: ranks advanced, cd: files from centre.
+type Delta = (t: number, rr: number, cd: number) => number;
+const STYLE_DELTA: Record<Exclude<Style, 'balanced'>, { own: Delta; foe: Delta }> = {
+  // Pieces pressing the enemy palace, crossed pawns and a central cannon; defenders matter less,
+  // and the enemy's advisors and elephants are worth taking.
+  aggressive: {
+    own: (t, rr, cd) =>
+      t === R ? (rr >= 5 ? 10 : 0) + (rr >= 7 && cd <= 1 ? 10 : 0)
+      : t === N ? (rr >= 5 ? 10 : 0) + (rr >= 6 && rr <= 8 && cd <= 2 ? 12 : 0)
+      : t === C ? (cd === 0 ? 8 : 0) + (rr >= 5 ? 4 : 0) + (rr === 9 ? 8 : 0)
+      : t === P ? (rr >= 5 ? 10 : 0) + (rr >= 6 && rr <= 8 && cd <= 1 ? 15 : 0)
+      : t === A || t === B ? -10 : 0,
+    foe: (t) => (t === A || t === B ? 20 : 0),
+  },
+  // Intact advisors and elephants, the king at home, rooks and horses guarding the river rather than
+  // raiding, pawns kept back.
+  solid: {
+    own: (t, rr, cd) =>
+      t === A || t === B ? 25
+      : t === K ? (rr === 0 && cd === 0 ? 10 : 0)
+      : t === R ? (rr === 4 || rr === 5 ? 8 : 0) - (rr >= 7 ? 8 : 0)
+      : t === N ? (rr >= 2 && rr <= 4 ? 6 : 0) - (rr >= 7 ? 8 : 0)
+      : t === C ? (rr <= 2 ? 6 : 0)
+      : t === P ? (rr >= 5 ? -6 : 0) : 0,
+    foe: () => 0,
+  },
+};
+/** Tables per style and searching side: STYLE_PST[style][side][code]. Balanced shares PST itself. */
+const STYLE_PST = {} as Record<Style, Int16Array[][]>;
+for (const st of STYLES) {
+  STYLE_PST[st] = [0, 1].map((me) => PST.map((base, code) => {
+    if (st === 'balanced' || !(code & 7)) return base;
+    const d = STYLE_DELTA[st], t = code & 7, pside = code >> 3, a = new Int16Array(base);
+    for (let i = 0; i < 90; i++) a[i] += (pside === me ? d.own : d.foe)(t, pside ? rowOf(i) : 9 - rowOf(i), Math.abs(colOf(i) - 4));
+    return a;
+  }));
+}
+// Style terms on a full army sum to a constant; subtract it so a level game still scores about zero
+// (scores stay comparable with contempt and between styles).
+const START = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR'.replace(/\d/g, (d) => '.'.repeat(+d)).replace(/\//g, '');
+const STYLE_OFFSET = {} as Record<Style, number[]>;
+for (const st of STYLES) STYLE_OFFSET[st] = [0, 1].map((me) => {
+  let o = 0;
+  for (let i = 0; i < 90; i++) {
+    const ch = START[i];
+    if (ch === '.') continue;
+    const code = TYPE_CODE[ch.toUpperCase()] + (ch === ch.toUpperCase() ? 0 : 8), d = STYLE_PST[st][me][code][i] - PST[code][i];
+    o += (code >> 3) === me ? d : -d;
+  }
+  return o;
+});
+let pst = PST, contempt = CONTEMPT.balanced;
+
 // ---------- zobrist ----------
 let seed = 0x9e3779b9;
 const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return (t ^ (t >>> 14)) | 0; };
@@ -109,23 +173,26 @@ const pathHash = new Int32Array(256);
 let repCount = new Map<number, number>();
 let nodes = 0, deadline = 0, aborted = false;
 
-function setup(board: number[], turn: number) {
+function setup(board: number[], turn: number, style: Style = 'balanced') {
+  pst = STYLE_PST[style][turn]; contempt = CONTEMPT[style];
   hLo = turn ? Z_TURN_LO : 0; hHi = turn ? Z_TURN_HI : 0; score = 0; side = turn;
   for (let i = 0; i < 90; i++) {
     const p = board[i]; bd[i] = p;
     if (!p) continue;
     hLo ^= Z_LO[p * 90 + i]; hHi ^= Z_HI[p * 90 + i];
-    score += p < 8 ? PST[p][i] : -PST[p][i];
+    score += p < 8 ? pst[p][i] : -pst[p][i];
     if ((p & 7) === K) kingSq[p >> 3] = i;
   }
+  const off = STYLE_OFFSET[style][turn];
+  score += turn ? off : -off;
 }
 
 function make(from: number, to: number): number {
   const p = bd[from], cap = bd[to];
   hLo ^= Z_LO[p * 90 + from] ^ Z_LO[p * 90 + to] ^ Z_TURN_LO; hHi ^= Z_HI[p * 90 + from] ^ Z_HI[p * 90 + to] ^ Z_TURN_HI;
-  const d = PST[p][to] - PST[p][from];
+  const d = pst[p][to] - pst[p][from];
   score += p < 8 ? d : -d;
-  if (cap) { hLo ^= Z_LO[cap * 90 + to]; hHi ^= Z_HI[cap * 90 + to]; score += cap < 8 ? -PST[cap][to] : PST[cap][to]; }
+  if (cap) { hLo ^= Z_LO[cap * 90 + to]; hHi ^= Z_HI[cap * 90 + to]; score += cap < 8 ? -pst[cap][to] : pst[cap][to]; }
   bd[to] = p; bd[from] = 0;
   if ((p & 7) === K) kingSq[p >> 3] = to;
   side ^= 1;
@@ -137,9 +204,9 @@ function unmake(from: number, to: number, cap: number) {
   bd[from] = p; bd[to] = cap;
   if ((p & 7) === K) kingSq[p >> 3] = from;
   hLo ^= Z_LO[p * 90 + from] ^ Z_LO[p * 90 + to] ^ Z_TURN_LO; hHi ^= Z_HI[p * 90 + from] ^ Z_HI[p * 90 + to] ^ Z_TURN_HI;
-  const d = PST[p][to] - PST[p][from];
+  const d = pst[p][to] - pst[p][from];
   score -= p < 8 ? d : -d;
-  if (cap) { hLo ^= Z_LO[cap * 90 + to]; hHi ^= Z_HI[cap * 90 + to]; score -= cap < 8 ? -PST[cap][to] : PST[cap][to]; }
+  if (cap) { hLo ^= Z_LO[cap * 90 + to]; hHi ^= Z_HI[cap * 90 + to]; score -= cap < 8 ? -pst[cap][to] : pst[cap][to]; }
 }
 
 /** Is `s`'s king attacked (including the flying-general rule)? */
@@ -265,7 +332,7 @@ function quiesce(alpha: number, beta: number, ply: number, qd: number): number {
 function negamax(depth: number, alpha: number, beta: number, ply: number): number {
   if ((++nodes & 2047) === 0 && deadline && Date.now() > deadline) aborted = true;
   if (aborted) return 0;
-  if (ply > 0 && repeated(ply)) return ply & 1 ? CONTEMPT : -CONTEMPT; // the root player dislikes draws
+  if (ply > 0 && repeated(ply)) return ply & 1 ? contempt : -contempt; // the root player dislikes draws
   const chk = inCheck(side);
   if (chk && ply < 60) depth++;
   if (depth <= 0 || ply >= 100) return quiesce(alpha, beta, ply, 0);
@@ -334,7 +401,7 @@ function legalRoot(): number[] {
 }
 
 export function search(req: AiRequest): AiResult | null {
-  setup(req.board, req.turn);
+  setup(req.board, req.turn, req.style);
   repCount = new Map();
   for (const h of req.reps ?? []) repCount.set(h, (repCount.get(h) ?? 0) + 1);
   repCount.delete(hLo); // the current position itself is not a repetition yet
@@ -374,6 +441,12 @@ export function search(req: AiRequest): AiResult | null {
     if (Math.abs(bestScore) > MATE - 200 || root.length === 1) break; // forced line found
   }
   return { from: best & 127, to: best >> 7, score: bestScore, depth: done, nodes };
+}
+
+/** Legal moves of a position as [from, to] pairs. */
+export function legalPairs(board: number[], turn: number): [number, number][] {
+  setup(board, turn);
+  return legalRoot().map((m) => [m & 127, m >> 7]);
 }
 
 /** Legal move count to `depth`, for checking the generator against the rules engine. */

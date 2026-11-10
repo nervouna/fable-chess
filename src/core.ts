@@ -24,6 +24,8 @@ export function groundHeight(x: number, z: number): number {
   const t = 1 - az / BANK;
   return -0.42 * smooth(Math.min(1, t / 0.6));
 }
+/** Centre line of the river beyond the board, where it meanders through the valley. */
+export const riverCenter = (x: number) => { const k = smooth(clamp((Math.abs(x) - 12) / 28, 0, 1)); return (Math.sin(x * 0.045) * 9 + Math.sin(x * 0.11 + 1.3) * 2) * k; };
 export const inWater = (x: number, z: number) => groundHeight(x, z) < WATER_Y + 0.05;
 /** Stone terrace extents (the only flat ground that can carry decals and wreckage). */
 export const TERRACE_X = 9.4, TERRACE_Z = 11;

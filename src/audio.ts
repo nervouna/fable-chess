@@ -105,7 +105,16 @@ class Sfx {
   whoosh() { this.nz(0.32, 0.22, 'bandpass', 500, 2600, 1.4, 0, 0.12); }
   rumble(dur: number) { this.nz(dur, 0.3, 'lowpass', 160, 260, 1, 0, dur * 0.3); this.nz(dur, 0.08, 'bandpass', 1400, 900, 6, 0, dur * 0.3); }
   creak(dur: number) { this.nz(dur, 0.12, 'bandpass', 300, 380, 5, 0, 0.1); this.tone('sawtooth', 70, 85, dur, 0.03); }
-  splash() { this.nz(0.35, 0.2, 'bandpass', 1800, 700, 0.8, 0, 0.02); }
+  /** A splash; `p` above 1 is something heavy going in (a deeper plunge under the spray). */
+  splash(p = 1) {
+    this.nz(0.35 + 0.15 * p, 0.2 * Math.min(2, p), 'bandpass', 1800, 700, 0.8, 0, 0.02);
+    if (p > 0.9) { this.tone('sine', 180 * p, 60, 0.3, 0.18 * Math.min(2, p)); this.nz(0.6, 0.18 * p, 'lowpass', 700, 120, 1, 0.05, 0.03); }
+  }
+  /** One stride through the water: a slosh, lower and fuller for heavier waders. */
+  wade(weight = 1) {
+    this.nz(0.28, 0.1 + 0.06 * weight, 'bandpass', 1100 / Math.sqrt(weight), 420, 1.4, 0, 0.04);
+    this.nz(0.22, 0.05 * weight, 'lowpass', 500, 160, 1, 0.06, 0.03);
+  }
   neigh(p = 1) { if (!this.ok()) return; this.tone('sawtooth', 900 * p, 1500 * p, 0.12, 0.06); this.tone('sawtooth', 1500 * p, 600 * p, 0.38, 0.07, 0.12); this.tone('square', 1400 * p, 500 * p, 0.38, 0.02, 0.12); }
   trumpet(p = 1) { this.tone('sawtooth', 240 * p, 520 * p, 0.25, 0.1); this.tone('sawtooth', 520 * p, 420 * p, 0.6, 0.12, 0.25); this.tone('square', 523 * p, 415 * p, 0.6, 0.04, 0.25); }
   // ----- combat -----

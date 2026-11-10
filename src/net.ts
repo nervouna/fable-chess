@@ -25,12 +25,14 @@ export class Link implements Transport {
   state: LinkState = 'waiting';
   readonly pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   private dc: RTCDataChannel | null = null;
-  private timer = 0;
+  private timer = 0; private guest = false; private opened = false;
 
   private constructor() {
     this.pc.onconnectionstatechange = () => {
       const s = this.pc.connectionState;
-      if (s === 'failed') this.end('failed');
+      // A guest's checks go unanswered until the host applies the reply, which can take minutes: its
+      // ICE may report 'failed' meanwhile and still recover once the host's checks arrive.
+      if (s === 'failed' && (this.opened || !this.guest)) this.end('failed');
       else if (s === 'disconnected' && this.state === 'open') {
         this.set('unstable');
         clearTimeout(this.timer);
@@ -51,6 +53,7 @@ export class Link implements Transport {
     const d = await expand(invite);
     if (d.type !== 'offer') throw new SdpError('Not an invite');
     const l = new Link();
+    l.guest = true;
     l.pc.ondatachannel = (e) => l.bind(e.channel);
     try {
       await l.pc.setRemoteDescription(d);
@@ -80,7 +83,7 @@ export class Link implements Transport {
 
   private bind(dc: RTCDataChannel) {
     this.dc = dc;
-    dc.onopen = () => { clearTimeout(this.timer); this.set('open'); this.onOpen?.(); };
+    dc.onopen = () => { clearTimeout(this.timer); this.opened = true; this.set('open'); this.onOpen?.(); };
     dc.onmessage = (e) => this.onMessage?.(e.data);
     dc.onclose = () => this.end('lost');
   }

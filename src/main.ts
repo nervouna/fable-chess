@@ -763,6 +763,13 @@ hud.init({
   reel: { start: () => void startReel(), export: () => void startReel(true), exit: reelExit },
   classics: { list: CLASSICS, play: (i) => void playClassic(i) },
 });
+online.init({
+  active: () => mode === 'net',
+  // A session is ready: leave any replay or reel (once the running move ends), then show its game.
+  begin: () => whenIdle(() => { endReel(false); if (rp) leaveReplay(); netGameNo = -1; if (mode !== 'net') setMode('net'); netSync(); }),
+  update: () => netSync(),
+  quit: () => setMode('pvp'),
+});
 const qBtn = document.getElementById('btn-quality')!, showQ = () => { qBtn.querySelector('span')!.textContent = '画质 ' + { high: '高', mid: '中', low: '低' }[quality.tier]; };
 qBtn.onclick = () => void quality.set(quality.next());
 quality.onChange.push(async (s) => {
@@ -825,13 +832,6 @@ rig.reset('r');
 requestAnimationFrame(frame);
 quality.probe(() => manual || !!reel);
 fromHash();
-online.init({
-  active: () => mode === 'net',
-  // A session is ready: leave any replay or reel (once the running move ends), then show its game.
-  begin: () => whenIdle(() => { endReel(false); if (rp) leaveReplay(); netGameNo = -1; if (mode !== 'net') setMode('net'); netSync(); }),
-  update: () => netSync(),
-  quit: () => setMode('pvp'),
-});
 online.fromHash();
 
 // ---------- debug / test hook ----------

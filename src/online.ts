@@ -152,8 +152,12 @@ class Online {
       latency: () => { if (mine()) this.render(); },
       closed: (why) => {
         if (!mine()) return;
-        this.prompt(null); this.error = CLOSED[why] ?? '连接已断开';
+        this.prompt(null);
+        // Never connected: most likely a network that cannot connect directly.
+        this.error = !g.ready && (why === 'timeout' || why === 'failed') ? CLOSED.failed : CLOSED[why] ?? '连接已断开';
         if (why !== 'leave') hud.toast(this.error);
+        if (!g.ready && !this.hooks.active()) this.game = null; // nothing to resume: no stale chip
+        if (!g.ready && this.view === 'invite') this.view = 'host'; // the invite is spent: offer a new room
         this.hooks.update(); this.render();
       },
     };

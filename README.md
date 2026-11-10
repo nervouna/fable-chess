@@ -151,7 +151,7 @@ either player can open the card and 续弈此局 to invite the other back into t
 Replay, the reel and the classics are off during an online game; leave it to use them.
 
 Honest limits: the peers connect directly, so each sees the other's IP address, and a public STUN
-server (Google's, Cloudflare's as a fallback) is asked for your public address. There is no TURN
+server (Google's and Cloudflare's) is asked for your public address. There is no TURN
 relay, so two players behind symmetric NATs (some mobile and office networks) cannot connect.
 
 ## How it is built

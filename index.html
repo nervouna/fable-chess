@@ -39,7 +39,7 @@
       </header>
 
       <aside class="panel moves">
-        <div class="hd">棋 谱</div>
+        <div class="hd"><button id="btn-replay" title="复盘 (P)">复盘</button><span>棋 谱</span><button id="btn-share" title="分享棋局">分享</button></div>
         <ol id="moves"></ol>
       </aside>
 
@@ -58,6 +58,8 @@
         <button id="btn-badge" class="toggle on" title="显示兵种徽记 (G)"><b>字</b><span>兵种徽记</span><kbd>G</kbd></button>
         <button id="btn-sound" class="toggle on" title="音效 (M)"><b>♪</b><span>音效</span><kbd>M</kbd></button>
         <button id="btn-music" class="toggle on" title="配乐 (B)"><b>鼓</b><span>配乐</span><kbd>B</kbd></button>
+        <button id="tool-replay" class="pt" title="复盘 (P)"><b>谱</b><span>复盘</span></button>
+        <button id="tool-share" class="pt" title="分享棋局"><b>⇪</b><span>分享</span></button>
       </aside>
 
       <div class="hint">左键拖动 旋转 · 滚轮 缩放 · 右键拖动 平移 · 点击棋子后点击光圈落子</div>
@@ -69,9 +71,31 @@
         <div class="card">
           <div class="big" id="over-title">红方胜</div>
           <div class="sub" id="over-sub">绝杀</div>
-          <div class="row"><button id="over-new">再战一局</button><button id="over-undo">悔棋</button></div>
+          <div class="row"><button id="over-new">再战一局</button><button id="over-replay">复盘</button><button id="over-undo">悔棋</button></div>
         </div>
       </div>
+
+      <div id="replay">
+        <div class="scrub"><input id="rp-range" type="range" min="0" max="0" value="0" step="1" aria-label="手数" /><span id="rp-ply">0 / 0</span></div>
+        <div class="btns">
+          <button id="rp-prev" title="上一步 (←)"><b>❮</b><span>上一步</span></button>
+          <button id="rp-play" title="播放 / 暂停 (空格)"><b>▶&#xFE0E;</b><span>播放</span></button>
+          <button id="rp-next" title="下一步 (→)"><b>❯</b><span>下一步</span></button>
+          <button id="rp-speed" title="播放速度"><b>1×</b><span>速度</span></button>
+          <button id="rp-share" title="分享棋局"><b>⇪</b><span>分享</span></button>
+          <button id="rp-exit" title="退出复盘 (Esc)"><b>✕</b><span>退出</span></button>
+        </div>
+      </div>
+
+      <div id="share">
+        <div class="card">
+          <div class="hd">分享棋局</div>
+          <input id="share-url" readonly aria-label="棋局链接" />
+          <div class="row"><button id="share-link">复制链接</button><button id="share-text">复制棋谱</button><button id="share-close">关闭</button></div>
+          <div class="note">打开链接即可复盘 · 也可将棋谱粘贴到页面中导入</div>
+        </div>
+      </div>
+      <div id="toast"></div>
 
       <div id="intro"><div class="big">楚漢爭鋒</div><div class="sub">3D 中 国 象 棋</div></div>
     </div>

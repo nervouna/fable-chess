@@ -23,6 +23,7 @@ import { music, Score } from './music';
 import { fineModels, GLYPH } from './units';
 import { grime, loadModels } from './models';
 import { quality, type Settings } from './quality';
+import { decode, encode as encodeRecord, resultText, startFen, toText, type Ply } from './record';
 
 // ---------- renderer ----------
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -127,7 +128,10 @@ let selected = -1, legal: number[] = [], busy = false, over = false, checkId = -
 let rebuildQueued = false;
 let mode: Mode = 'pvp', thinking = false, progress = 0, inCheckNow = false, weatherLock = false;
 /** Is this side played by the computer in the current mode? */
-const isAI = (s: Side) => mode === 'watch' || (mode === 'pve' && s === 'b');
+const isAI = (s: Side) => !rp && (mode === 'watch' || (mode === 'pve' && s === 'b'));
+/** Replay of a recorded game. `back` is the live game to return to; `token` invalidates stale autoplay timers. */
+interface Replay { fen: string; moves: Ply[]; code: string; back: { fen: string; moves: Ply[] }; playing: boolean; speed: number; token: number }
+let rp: Replay | null = null;
 
 // ---------- AI (search runs in a worker) ----------
 const worker = new Worker(new URL('./ai.worker.ts', import.meta.url), { type: 'module' });
@@ -168,11 +172,12 @@ function sync() {
 const WATCH_PLY_LIMIT = 220;
 function refresh() {
   let st = engine.status();
-  if (mode === 'watch' && !st.over && engine.history.length >= WATCH_PLY_LIMIT) st = { ...st, over: true, winner: null, reason: 'nocapture' };
+  if (mode === 'watch' && !rp && !st.over && engine.history.length >= WATCH_PLY_LIMIT) st = { ...st, over: true, winner: null, reason: 'nocapture' };
   const ks = st.check ? engine.kingSquare(engine.turn) : -1;
   checkId = ks >= 0 ? engine.board[ks]!.id : -1;
   hud.setTurn(over ? (st.winner ?? engine.turn) : engine.turn, st.check, over, thinking && !over);
   hud.setHistory(engine.history);
+  if (rp) hud.replayState(engine.history.length, rp.moves.length, rp.playing, rp.speed, st.over ? resultText(st) : '');
   // Weather is a pure function of the game: the day wears on as pieces fall, checks bring the storm.
   const caps = engine.history.reduce((n, m) => n + (m.captured ? 1 : 0), 0);
   progress = Math.min(1, Math.max(caps / 18, engine.history.length / 110));
@@ -212,7 +217,7 @@ async function play(from: number, to: number): Promise<boolean> {
   busy = true; thinking = false; select(-1); hoverRing.visible = false;
   // Start the reply search now so it runs while the move animates.
   const next = isAI(engine.turn) && !engine.status().over ? askAI() : undefined;
-  if (mode === 'watch') rig.glance(sqPos(to));
+  if (mode === 'watch' || rp) rig.glance(sqPos(to));
   const gen = generation;
   const u = units.get(m.piece.id)!, toPos = sqPos(to);
   if (m.captured) {
@@ -247,12 +252,14 @@ async function play(from: number, to: number): Promise<boolean> {
   else {
     if (st.check) {
       hud.flash('將軍', m.piece.side); sfx.check(); rig.shake(0.25); world.strike(rig.cam);
-      if (mode === 'watch') rig.focus(sqPos(engine.kingSquare(engine.turn)), 1.6);
+      if (mode === 'watch' || rp) rig.focus(sqPos(engine.kingSquare(engine.turn)), 1.6);
     }
-    if (opts.autoCam && mode === 'pvp') rig.faceSide(engine.turn);
+    if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
   }
   busy = false;
   if (rebuildQueued) { rebuildQueued = false; sync(); }
+  if (queued) { const f = queued; queued = null; hurry(false); f(); return true; }
+  if (rp) { replayed(); return true; }
   if (!over) void aiTurn(next);
   return true;
 }
@@ -266,8 +273,7 @@ async function finale(st: Status, by: Unit) {
     await wait(1.6);
     if (gen !== generation) return;
     refresh();
-    hud.gameOver(st.winner, st.reason === 'perpetual' ? '长将判负' : st.reason === 'repetition' ? '三次重复' : '久战无果');
-    void autoRestart(gen);
+    if (!rp) showOver(st);
     return;
   }
   const loser = engine.turn, ks = engine.kingSquare(loser), king = units.get(engine.board[ks]!.id)!;
@@ -285,36 +291,38 @@ async function finale(st: Status, by: Unit) {
   rig.cineEnd(); hud.cinematic(false); post.tilt = 0;
   if (gen !== generation) return;
   refresh();
-  hud.gameOver(st.winner!, st.reason === 'checkmate' ? '绝 杀' : '困 毙');
-  void autoRestart(gen);
+  if (!rp) showOver(st);
 }
+const OVER_SUB: Record<string, string> = { checkmate: '绝 杀', stalemate: '困 毙', perpetual: '长将判负', repetition: '三次重复', nocapture: '久战无果' };
+function showOver(st: Status) { hud.gameOver(st.winner, OVER_SUB[st.reason ?? 'nocapture']); void autoRestart(generation); }
 /** In spectator mode the armies reset and go again after a pause over the aftermath. */
 async function autoRestart(gen: number) {
-  if (mode !== 'watch') return;
+  if (mode !== 'watch' || rp) return;
   rig.wide();
   await wait(9);
-  if (gen === generation && mode === 'watch') restart(true);
+  if (gen === generation && mode === 'watch' && !rp) restart(true);
 }
 
 function resetState() {
   generation++;
-  over = false; busy = false; post.desat = 0; post.tilt = 0;
+  over = engine.status().over; busy = false; post.desat = 0; post.tilt = 0;
   rig.cineEnd(); hud.cinematic(false); hud.hideOver(); hud.duelHide();
   grade.uniforms.uImpact.value = 0;
   scars.rewind(engine.history.length);
   thinking = false;
   select(-1); sync();
-  if (opts.autoCam && mode === 'pvp') rig.faceSide(engine.turn);
+  if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
   if (!over) void aiTurn();
 }
 function setMode(m: Mode) {
   mode = m; hud.setMode(m);
-  rig.director = m === 'watch';
-  if (m !== 'watch') rig.reset(m === 'pve' ? 'r' : engine.turn);
+  rig.director = m === 'watch' || !!rp?.playing;
+  if (m !== 'watch' && !rp) rig.reset(m === 'pve' ? 'r' : engine.turn);
   thinking = false;
   if (!busy) { refresh(); if (!over) void aiTurn(); else void autoRestart(generation); }
 }
 function undo() {
+  if (rp) { replayPrev(); return; }
   if (busy || mode === 'watch') { sfx.error(); return; }
   if (!engine.undo()) { sfx.error(); return; }
   // Against the computer, also take back its reply so it is the human's turn again.
@@ -322,10 +330,111 @@ function undo() {
   sfx.place(); resetState();
 }
 function restart(auto = false) {
+  if (rp) { const r = rp; whenIdle(() => { if (rp !== r) return; leaveReplay(); restart(); }); return; }
   if (busy && !auto) return;
   engine.load(START_FEN); sfx.drum(); resetState();
   if (mode !== 'watch') rig.reset('r');
 }
+
+// ---------- replay ----------
+// Replay drives the same engine and play() as a live game. Forward steps animate the real move; back
+// steps and scrubbing rebuild the position instantly through resetState(), which also rolls the scars
+// back to the ply shown. Nothing interrupts a running move: requests made during one are queued (the
+// latest wins) and the move is hurried along to make room.
+let queued: (() => void) | null = null, baseScale = 1;
+function whenIdle(fn: () => void) { if (!busy) { fn(); return; } queued = fn; hurry(true); }
+function hurry(on: boolean) { clock.userScale = on ? Math.max(8, rp?.speed ?? 1) : rp ? rp.speed : baseScale; }
+const plies = (e: Engine) => e.history.map((m) => ({ from: m.from, to: m.to }));
+/** Set the engine to `fen` followed by `moves` without animation. */
+function rebuild(fen: string, moves: Ply[]) { engine.load(fen); for (const m of moves) engine.move(m.from, m.to); }
+/** Enter replay of `text` (a record or link), or of the game on screen. Returns false for a bad record. */
+function enterReplay(text?: string): boolean {
+  if (text === undefined && rp) return true;
+  let rec: { fen: string; moves: Ply[]; code: string };
+  try {
+    if (text === undefined) rec = { fen: startFen(engine), moves: plies(engine), code: encodeRecord(engine) };
+    else { const d = decode(text); rec = { fen: d.fen, moves: d.moves, code: encodeRecord(d.engine) }; }
+  } catch (e) {
+    console.warn('Bad game record:', e instanceof Error ? e.message : e);
+    hud.toast('棋谱无效'); sfx.error(); return false;
+  }
+  if (!rp && !queued) baseScale = clock.userScale; // before any hurrying
+  whenIdle(() => {
+    const back = rp?.back ?? { fen: startFen(engine), moves: plies(engine) };
+    rp = { ...rec, back, playing: false, speed: rp?.speed ?? 1, token: 0 };
+    aiEpoch++; thinking = false; clock.userScale = rp.speed; rig.director = mode === 'watch';
+    hud.closeShare(); hud.replay(true);
+    // A link starts at the beginning; the game on screen opens where it stands, so a look back and
+    // straight out again leaves its battlefield untouched.
+    seekNow(text === undefined ? rec.moves.length : 0);
+  });
+  return true;
+}
+/** Jump to `ply` instantly. */
+function seekNow(ply: number) {
+  if (!rp) return;
+  rp.token++;
+  rebuild(rp.fen, rp.moves.slice(0, Math.max(0, Math.min(rp.moves.length, ply))));
+  resetState();
+  if (over) world.setMood(progress, 0.75, 1); // a finished position shows its ending weather at once
+}
+const pause = () => { if (rp) { rp.playing = false; rp.token++; } rig.director = mode === 'watch'; };
+function replaySeek(ply: number) { if (!rp) return; pause(); const r = rp; whenIdle(() => { if (rp === r) seekNow(ply); }); refresh(); }
+/** One ply back (during a move: the position before it). */
+function replayPrev() { if (rp) replaySeek(engine.history.length - 1); }
+/** Animate the next recorded move. */
+function replayStep() {
+  if (!rp || busy) return;
+  const m = rp.moves[engine.history.length];
+  if (!m) { pause(); refresh(); return; }
+  void play(m.from, m.to);
+}
+function replayNext() { if (!rp) return; pause(); whenIdle(replayStep); refresh(); }
+function replayToggle() {
+  if (!rp) return;
+  if (rp.playing) { pause(); refresh(); return; }
+  rp.playing = true; rp.token++; rig.director = true;
+  const r = rp;
+  whenIdle(() => { if (rp !== r) return; if (engine.history.length >= r.moves.length) seekNow(0); replayStep(); });
+  refresh();
+}
+function replaySpeed() { if (!rp) return; rp.speed = rp.speed >= 4 ? 1 : rp.speed * 2; if (!queued) clock.userScale = rp.speed; refresh(); }
+/** Called when a replayed move has finished animating: keep playing after a short beat. */
+function replayed() {
+  if (!rp) return;
+  if (engine.history.length >= rp.moves.length) pause();
+  refresh();
+  if (!rp.playing) return;
+  const r = rp, tok = rp.token;
+  void wait(0.45).then(() => { if (rp === r && r.playing && r.token === tok && !busy) replayStep(); });
+}
+/** Back to the live game as it was (a finished game shows its result card again). */
+function leaveReplay() {
+  if (!rp) return;
+  const b = rp.back;
+  rp = null; clock.userScale = baseScale; queued = null;
+  hud.replay(false); hud.closeShare();
+  rig.director = mode === 'watch';
+  if (location.hash.startsWith('#g=')) history.replaceState(null, '', location.pathname + location.search);
+  rebuild(b.fen, b.moves);
+  resetState();
+  if (over) showOver(refresh());
+}
+function replayExit() { if (!rp) return; pause(); const r = rp; whenIdle(() => { if (rp === r) leaveReplay(); }); }
+/** Link and readable record of the game on screen (the whole recorded game during replay). */
+function shareInfo() {
+  let e = engine, code = '';
+  if (rp) { e = new Engine(rp.fen); for (const m of rp.moves) e.move(m.from, m.to); code = rp.code; } else code = encodeRecord(engine);
+  return { link: location.origin + location.pathname + '#g=' + code, text: toText(e) };
+}
+const fromHash = () => { if (location.hash.startsWith('#g=') && !enterReplay(location.hash.slice(3)) && !rp) history.replaceState(null, '', location.pathname + location.search); };
+window.addEventListener('hashchange', fromHash);
+// Paste a record or a link anywhere on the page to replay it.
+window.addEventListener('paste', (e) => {
+  const t = e.clipboardData?.getData('text') ?? '';
+  if ((e.target as HTMLElement).tagName === 'INPUT' || !t.trim()) return;
+  enterReplay(t);
+});
 
 // ---------- input ----------
 const ray = new THREE.Raycaster(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitP = new THREE.Vector3();
@@ -348,7 +457,7 @@ function pickSquare(ndc: THREE.Vector2): number {
 
 rig.onClick = (ndc) => {
   sfx.unlock();
-  if (busy || over || isAI(engine.turn)) return;
+  if (busy || over || rp || isAI(engine.turn)) return;
   const i = pickSquare(ndc);
   if (i < 0) { select(-1); return; }
   const p = engine.board[i];
@@ -357,7 +466,7 @@ rig.onClick = (ndc) => {
   else { if (selected >= 0 || p) sfx.error(); select(-1); }
 };
 rig.onHover = (ndc) => {
-  if (busy || over || isAI(engine.turn)) { canvas.classList.remove('pointing'); hoverRing.visible = false; return; }
+  if (busy || over || rp || isAI(engine.turn)) { canvas.classList.remove('pointing'); hoverRing.visible = false; return; }
   const i = pickSquare(ndc), p = i >= 0 ? engine.board[i] : null;
   const can = i >= 0 && ((p && p.side === engine.turn) || legal.includes(i));
   canvas.classList.toggle('pointing', !!can);
@@ -376,6 +485,7 @@ hud.init({
   sound: (on) => { sfx.unlock(); sfx.setMuted(!on); },
   music: (on) => { sfx.unlock(); music.setOn(on); },
   fine: (on) => { fineModels.on = on; if (busy) rebuildQueued = true; else { select(-1); sync(); } }, // mid-move: rebuild as soon as it ends
+  replay: { enter: () => void enterReplay(), prev: replayPrev, next: replayNext, toggle: replayToggle, speed: replaySpeed, seek: replaySeek, exit: replayExit, share: shareInfo },
 });
 const qBtn = document.getElementById('btn-quality')!, showQ = () => { qBtn.querySelector('span')!.textContent = '画质 ' + { high: '高', mid: '中', low: '低' }[quality.tier]; };
 qBtn.onclick = () => void quality.set(quality.next());
@@ -437,6 +547,7 @@ world.setMood(0, 0, 0, true); // open at dawn rather than easing there from the 
 rig.reset('r');
 requestAnimationFrame(frame);
 quality.probe(() => manual);
+fromHash();
 
 // ---------- debug / test hook ----------
 const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
@@ -444,15 +555,27 @@ const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(
   engine, units, rig, clock, fx, scars, scene, renderer, grade: grade.uniforms, world, music, Score, grime,
   /** Pin the weather for testing: weather(time, storm, rain), or weather() to follow the game again. */
   weather(time?: number, storm = 0, rain = 0) { weatherLock = time !== undefined; if (weatherLock) world.setMood(time!, storm, rain, true); else refresh(); },
-  get state() { return { turn: engine.turn as Side, busy, over, selected, mode, thinking, history: engine.history.map((m) => m.notation), status: engine.status() }; },
+  get state() {
+    return { turn: engine.turn as Side, busy, over, selected, mode, thinking, history: engine.history.map((m) => m.notation), status: engine.status(),
+      replay: rp ? { ply: engine.history.length, total: rp.moves.length, playing: rp.playing, speed: rp.speed } : null };
+  },
   set timeScale(v: number) { clock.userScale = v; },
   set manual(v: boolean) { manual = v; },
   /** Switch between authored models and the original procedural ones (rebuilds every unit). */
   fine(on: boolean) { if (busy) return false; fineModels.on = on; select(-1); sync(); return true; },
-  load(fen: string) { engine.load(fen); resetState(); },
-  move(s: string) { return play(sq(s.slice(0, 2)), sq(s.slice(2, 4))); },
-  click(s: string) { const i = sq(s), p = engine.board[i]; if (selected >= 0 && legal.includes(i)) return play(selected, i); if (p && p.side === engine.turn) select(i); return legal.map(sqName); },
+  load(fen: string) { if (rp) leaveReplay(); engine.load(fen); resetState(); },
+  move(s: string) { return rp ? Promise.resolve(false) : play(sq(s.slice(0, 2)), sq(s.slice(2, 4))); },
+  click(s: string) { if (rp) return []; const i = sq(s), p = engine.board[i]; if (selected >= 0 && legal.includes(i)) return play(selected, i); if (p && p.side === engine.turn) select(i); return legal.map(sqName); },
   undo, restart, setMode,
+  /** Compact record of the game (the replayed one during replay), as used in `#g=` links. */
+  record() { return rp ? rp.code : encodeRecord(engine); },
+  /** Readable record: ICCS moves with the traditional notation. */
+  recordText() { return shareInfo().text; },
+  /** Replay a record or link, or the current game when omitted. */
+  replay(text?: string) { return enterReplay(text); },
+  replayTo(ply: number) { replaySeek(ply); },
+  replayStep: replayNext, replayToggle, replaySpeed,
+  replayExit,
   /** Quality tier: quality() returns it, quality('low' | 'mid' | 'high') switches (and saves) it. */
   quality(t?: 'low' | 'mid' | 'high') { return t ? quality.set(t).then(() => quality.tier) : quality.tier; },
   /** Drive the simulation manually (for hidden tabs where rAF is paused). */

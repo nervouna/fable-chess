@@ -109,4 +109,15 @@ assert.deepEqual(highlights(START_FEN, []), []);
   assert.ok(clips.some((c) => c.reason === '连将'), JSON.stringify(clips));
 }
 
+// Sacrifice: a chariot checks in front of the king, the king takes it, and the other chariot checks.
+{
+  const fen = '4k4/8R/9/9/9/9/9/9/9/R2K5 w';
+  const clips = highlights(fen, parse('i8e8 e9e8 a0a8'));
+  ordered(clips);
+  assert.equal(clips[0].reason, '弃车', JSON.stringify(clips));
+  assert.equal(clips[0].start, 0); assert.equal(clips[0].end, 2);
+  // Without the follow-up check it is only a lost chariot: no sacrifice.
+  assert.ok(!highlights(fen, parse('i8e8 e9e8 a0a1')).some((c) => c.reason === '弃车'));
+}
+
 console.log('reel tests passed');

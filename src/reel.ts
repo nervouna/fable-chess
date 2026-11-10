@@ -10,8 +10,9 @@
 //   check          +25 (a capture that also checks gets both)
 //   first blood    +20 on the game's first capture
 //   exchange       a capture answered at once by a recapture on the same square: both plies, +15
-//   sacrifice      a move that hands over more than it took, accepted at once on that square, after
-//                  which the sacrificing side checks on its very next move: both plies, +40 + 8 x value
+//   sacrifice      a move that gives up at least 2 more than it took (often nothing), accepted at once
+//                  on that square, after which the sacrificing side checks on its very next move:
+//                  both plies, +40 + 8 x value of the piece given up (takes precedence over exchange)
 //   king hunt      three or more checks in a row by one side: the run (last 5 plies at most), +30 each
 //   mate           checkmate or stalemate on the last move: always included, always last
 // Candidates are taken by score (ties: the later moment) while they do not overlap a chosen one and
@@ -63,8 +64,8 @@ export function highlights(fen: string, moves: Ply[], o: ReelOptions = {}): Clip
     const r = p < n ? at(p + 1) : null;
     if (r?.captured && r.to === m.to && !(p + 1 === n && mate)) {
       const lost = VALUE[m.piece.type], won = m.captured ? VALUE[m.captured.type] : 0, next = p + 2 <= n ? at(p + 2) : null;
-      if (m.captured) cands.push({ ply: p, start: p - 1, end: p + 1, score: s + single(p + 1) + 15, reason: m.captured.type === m.piece.type ? SWAP[m.piece.type] : '兑子' });
-      else if (lost - won >= 2 && next?.check) cands.push({ ply: p, start: p - 1, end: p + 1, score: s + single(p + 1) + 40 + 8 * lost, reason: SAC[m.piece.type] });
+      if (lost - won >= 2 && next?.check) cands.push({ ply: p, start: p - 1, end: p + 1, score: s + single(p + 1) + 40 + 8 * lost, reason: SAC[m.piece.type] });
+      else if (m.captured) cands.push({ ply: p, start: p - 1, end: p + 1, score: s + single(p + 1) + 15, reason: m.captured.type === m.piece.type ? SWAP[m.piece.type] : '兑子' });
     }
   }
   // King hunts: maximal runs of checks by one side on consecutive turns, stopping short of a mate.

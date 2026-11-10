@@ -81,7 +81,9 @@ export class Recorder {
     const g = this.g, W = this.out.width, H = this.out.height;
     const dt = Math.min(0.1, Math.max(0, o.time - this.last)); this.last = o.time;
     g.globalAlpha = 1; g.shadowBlur = 0;
-    g.drawImage(this.src, 0, 0, W, H);
+    // Cover-fit: if the window changes shape mid-recording the picture is cropped, never stretched.
+    const sw = this.src.width, sh = this.src.height, k = Math.min(sw / W, sh / H);
+    if (sw && sh) g.drawImage(this.src, (sw - W * k) / 2, (sh - H * k) / 2, W * k, H * k, 0, 0, W, H);
     this.bars += ((o.letterbox ? 1 : 0) - this.bars) * Math.min(1, dt * 9);
     if (this.bars > 0.002) { g.fillStyle = '#000'; const bh = H * 0.11 * this.bars; g.fillRect(0, 0, W, bh); g.fillRect(0, H - bh, W, bh); }
     const u = Math.min(W, H * 1.6) / 100; // type scale: 1% of a landscape frame's width

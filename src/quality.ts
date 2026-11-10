@@ -77,7 +77,8 @@ class Quality {
 
   /** Switch tiers. `save` remembers the choice for later visits. Resolves once every listener is done. */
   set(tier: Tier, save = true): Promise<void> {
-    if (save) store.set(KEY, tier);
+    if (!isTier(tier)) return Promise.reject(new Error(`unknown quality tier "${tier}" (low, mid or high)`));
+    if (save) { store.set(KEY, tier); this.source = 'saved'; } // a player's choice also stops a running probe
     if (tier === this.tier) return this.busy;
     this.tier = tier;
     // Switches run one after another, so a quick double click cannot leave half of one tier loaded.
@@ -97,6 +98,7 @@ class Quality {
     let last = 0, warm = 0;
     const times: number[] = [];
     const frame = (now: number) => {
+      if (this.source !== 'auto') return;
       const dt = now - last; last = now;
       if (document.visibilityState !== 'visible' || skip() || dt > 250 || warm++ < 30) { requestAnimationFrame(frame); return; }
       times.push(dt);

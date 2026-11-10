@@ -71,7 +71,7 @@
         <div class="card">
           <div class="big" id="over-title">红方胜</div>
           <div class="sub" id="over-sub">绝杀</div>
-          <div class="row"><button id="over-new">再战一局</button><button id="over-replay">复盘</button><button id="over-undo">悔棋</button></div>
+          <div class="row"><button id="over-new">再战一局</button><button id="over-replay">复盘</button><button id="over-reel">集锦</button><button id="over-undo">悔棋</button></div>
         </div>
       </div>
 
@@ -92,7 +92,21 @@
           <div class="hd">分享棋局</div>
           <input id="share-url" readonly aria-label="棋局链接" />
           <div class="row"><button id="share-link">复制链接</button><button id="share-text">复制棋谱</button><button id="share-close">关闭</button></div>
+          <div class="row reel"><button id="share-reel" title="精彩片段 (L)">观看集锦</button><button id="share-export" title="录制集锦为视频">导出视频</button></div>
           <div class="note">打开链接即可复盘 · 也可将棋谱粘贴到页面中导入</div>
+        </div>
+      </div>
+      <div id="reelcard"><span class="t"></span><span class="s"></span></div>
+      <div id="reelbar">
+        <div class="info"><span id="rl-text">集锦</span><div class="prog"><i id="rl-fill"></i></div></div>
+        <button id="rl-export" title="导出视频"><b>⏺&#xFE0E;</b><span>导出</span></button>
+        <button id="rl-exit" title="退出集锦 (Esc)"><b>✕</b><span>退出</span></button>
+      </div>
+      <div id="video">
+        <div class="card">
+          <div class="hd">集锦视频</div>
+          <div class="note" id="video-note"></div>
+          <div class="row"><a id="video-dl" class="btn" download>下载</a><button id="video-share">分享</button><button id="video-close">关闭</button></div>
         </div>
       </div>
       <div id="toast"></div>

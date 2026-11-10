@@ -24,6 +24,8 @@ import { fineModels, GLYPH } from './units';
 import { grime, loadModels } from './models';
 import { quality, type Settings } from './quality';
 import { decode, encode as encodeRecord, resultText, startFen, toText, type Ply } from './record';
+import { highlights, type Clip } from './reel';
+import { Recorder, canRecord, type Caption, type Overlay, type Recording } from './capture';
 
 // ---------- renderer ----------
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -78,13 +80,21 @@ composer.addPass(grade);
 composer.addPass(new OutputPass());
 const post = { tilt: 0, desat: 0 }; // targets, smoothed per frame
 
+/** While a video is recorded the frame is rendered at a fixed size: at least 1280 on its long side
+ *  (more if the tier already renders more), at most 1920 x 1080, both even for the encoder. */
+let capturing = false;
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight, pr = Math.min(window.devicePixelRatio, quality.s.dpr);
-  renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
-  composer.setPixelRatio(pr); composer.setSize(w, h);
-  grade.uniforms.uRes.value.set(w * pr, h * pr);
+  const w = window.innerWidth || 1, h = window.innerHeight || 1;
+  let pr = Math.min(window.devicePixelRatio, quality.s.dpr), W = w * pr, H = h * pr;
+  if (capturing) {
+    const L = Math.max(w, h), S = Math.min(w, h), k = Math.min(1920 / L, 1080 / S, Math.max(pr, 1280 / L));
+    W = 2 * Math.round((w * k) / 2); H = 2 * Math.round((h * k) / 2); pr = 1;
+  }
+  renderer.setPixelRatio(pr); renderer.setSize(capturing ? W : w, capturing ? H : h, false);
+  composer.setPixelRatio(pr); composer.setSize(capturing ? W : w, capturing ? H : h);
+  grade.uniforms.uRes.value.set(W, H);
   rig.setAspect(w / h);
-  fx.setViewport(h * pr, rig.cam.fov);
+  fx.setViewport(H, rig.cam.fov);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -118,6 +128,13 @@ const beamTex = (() => {
 const beam = mk(new THREE.CylinderGeometry(0.78, 0.78, 3.4, 32, 1, true).translate(0, 1.7, 0), 0xffffff, 0.5);
 beam.material.map = beamTex;
 const hoverRing = mk(flat(new THREE.RingGeometry(0.78, 0.86, 40)), 0xffffff, 0.7);
+
+// ---------- overlays ----------
+// The DOM shows titles and the letterbox; a recording copies them into the video (see capture.ts).
+const burn: Overlay = { time: 0, letterbox: false, card: null, banner: null, duel: null };
+const caption = (text: string, side: Caption['side'], life: number, sub?: string): Caption => ({ text, sub, side, t: clock.real, life });
+function flash(text: string, side: Side) { hud.flash(text, side); burn.banner = caption(text, side, 1.5); }
+function cinematic(on: boolean) { hud.cinematic(on); burn.letterbox = on; }
 
 // ---------- game state ----------
 const engine = new Engine();
@@ -223,9 +240,10 @@ async function play(from: number, to: number): Promise<boolean> {
   if (m.captured) {
     const v = units.get(m.captured.id)!;
     units.delete(m.captured.id);
-    rig.cineStart(u.root.position, toPos); hud.cinematic(true); post.tilt = 1;
+    rig.cineStart(u.root.position, toPos); cinematic(true); post.tilt = 1;
     const key = m.piece.type + m.captured.type;
     hud.duel(DUEL[key] ?? '短兵相接', GLYPH[m.piece.side][m.piece.type], GLYPH[m.captured.side][m.captured.type], m.piece.side);
+    burn.duel = caption(DUEL[key] ?? '短兵相接', m.piece.side, 2.7);
     void playBrace(v, u.root.position);
     await wait(0.65);
     let death: Promise<void> = Promise.resolve();
@@ -241,7 +259,7 @@ async function play(from: number, to: number): Promise<boolean> {
     });
     await death;
     await wait(0.2);
-    rig.cineEnd(); hud.cinematic(false); hud.duelHide(); post.tilt = 0;
+    rig.cineEnd(); cinematic(false); hud.duelHide(); burn.duel = null; post.tilt = 0;
   } else {
     await playMove(u, toPos);
   }
@@ -251,7 +269,7 @@ async function play(from: number, to: number): Promise<boolean> {
   if (st.over) await finale(st, u);
   else {
     if (st.check) {
-      hud.flash('將軍', m.piece.side); sfx.check(); rig.shake(0.25); world.strike(rig.cam);
+      flash('將軍', m.piece.side); sfx.check(); rig.shake(0.25); world.strike(rig.cam);
       if (mode === 'watch' || rp) rig.focus(sqPos(engine.kingSquare(engine.turn)), 1.6);
     }
     if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
@@ -269,7 +287,7 @@ async function finale(st: Status, by: Unit) {
   const gen = generation;
   if (st.reason !== 'checkmate' && st.reason !== 'stalemate') {
     // Draws and perpetual check end without a king falling.
-    hud.flash(st.winner ? '長將' : '和棋', st.winner ?? engine.turn); sfx.gong();
+    flash(st.winner ? '長將' : '和棋', st.winner ?? engine.turn); sfx.gong();
     await wait(1.6);
     if (gen !== generation) return;
     refresh();
@@ -277,10 +295,10 @@ async function finale(st: Status, by: Unit) {
     return;
   }
   const loser = engine.turn, ks = engine.kingSquare(loser), king = units.get(engine.board[ks]!.id)!;
-  hud.flash(st.reason === 'checkmate' ? '絕殺' : '困斃', st.winner!); sfx.check();
+  flash(st.reason === 'checkmate' ? '絕殺' : '困斃', st.winner!); sfx.check();
   await wait(0.7);
   rig.cineStart(by.root.position.distanceTo(king.root.position) > 0.5 ? by.root.position : new THREE.Vector3(0, 0, 0), king.root.position, 0.8);
-  hud.cinematic(true); post.tilt = 1;
+  cinematic(true); post.tilt = 1;
   await wait(0.9);
   slowmo(0.5, 1.2);
   post.desat = 0.8;
@@ -288,7 +306,7 @@ async function finale(st: Status, by: Unit) {
   sfx.victory();
   for (const u of units.values()) if (u.piece.side === st.winner) { fx.embers(u.root.position, 14, TEAM[st.winner!].glow, 0.5, 2.5); tween(0.5, (t) => { u.body.position.y = Math.sin(Math.PI * t) * 0.35; }); }
   await wait(0.8);
-  rig.cineEnd(); hud.cinematic(false); post.tilt = 0;
+  rig.cineEnd(); cinematic(false); post.tilt = 0;
   if (gen !== generation) return;
   refresh();
   if (!rp) showOver(st);
@@ -306,7 +324,7 @@ async function autoRestart(gen: number) {
 function resetState() {
   generation++;
   over = engine.status().over; busy = false; post.desat = 0; post.tilt = 0;
-  rig.cineEnd(); hud.cinematic(false); hud.hideOver(); hud.duelHide();
+  rig.cineEnd(); cinematic(false); hud.hideOver(); hud.duelHide(); burn.duel = burn.banner = null;
   grade.uniforms.uImpact.value = 0;
   scars.rewind(engine.history.length);
   thinking = false;
@@ -322,6 +340,7 @@ function setMode(m: Mode) {
   if (!busy) { refresh(); if (!over) void aiTurn(); else void autoRestart(generation); }
 }
 function undo() {
+  if (reel) return;
   if (rp) { replayPrev(); return; }
   if (busy || mode === 'watch') { sfx.error(); return; }
   if (!engine.undo()) { sfx.error(); return; }
@@ -330,6 +349,7 @@ function undo() {
   sfx.place(); resetState();
 }
 function restart(auto = false) {
+  if (reel && auto) return;
   if (rp) { const r = rp; whenIdle(() => { if (rp !== r) return; leaveReplay(); restart(); }); return; }
   if (busy && !auto) return;
   engine.load(START_FEN); sfx.drum(); resetState();
@@ -359,16 +379,18 @@ function enterReplay(text?: string): boolean {
     hud.toast('棋谱无效'); sfx.error(); return false;
   }
   if (!rp && !queued) baseScale = clock.userScale; // before any hurrying
-  whenIdle(() => {
-    const back = rp?.back ?? { fen: startFen(engine), moves: plies(engine) };
-    rp = { ...rec, back, playing: false, speed: rp?.speed ?? 1, token: 0 };
-    aiEpoch++; thinking = false; clock.userScale = rp.speed; rig.director = mode === 'watch';
-    hud.closeShare(); hud.replay(true);
-    // A link starts at the beginning; the game on screen opens where it stands, so a look back and
-    // straight out again leaves its battlefield untouched.
-    seekNow(text === undefined ? rec.moves.length : 0);
-  });
+  // A link starts at the beginning; the game on screen opens where it stands, so a look back and
+  // straight out again leaves its battlefield untouched.
+  whenIdle(() => { endReel(false); openReplay(rec, text === undefined ? rec.moves.length : 0); });
   return true;
+}
+/** Switch to replaying `rec` at `ply` (no waiting: call when idle). */
+function openReplay(rec: { fen: string; moves: Ply[]; code: string }, ply: number) {
+  const back = rp?.back ?? { fen: startFen(engine), moves: plies(engine) };
+  rp = { ...rec, back, playing: false, speed: rp?.speed ?? 1, token: 0 };
+  aiEpoch++; thinking = false; clock.userScale = rp.speed; rig.director = mode === 'watch';
+  hud.closeShare(); hud.replay(true);
+  seekNow(ply);
 }
 /** Jump to `ply` instantly. */
 function seekNow(ply: number) {
@@ -379,7 +401,7 @@ function seekNow(ply: number) {
   if (over) world.setMood(progress, 0.75, 1); // a finished position shows its ending weather at once
 }
 const pause = () => { if (rp) { rp.playing = false; rp.token++; } rig.director = mode === 'watch'; };
-function replaySeek(ply: number) { if (!rp) return; pause(); const r = rp; whenIdle(() => { if (rp === r) seekNow(ply); }); refresh(); }
+function replaySeek(ply: number) { if (!rp || reel) return; pause(); const r = rp; whenIdle(() => { if (rp === r) seekNow(ply); }); refresh(); }
 /** One ply back (during a move: the position before it). */
 function replayPrev() { if (rp) replaySeek(engine.history.length - 1); }
 /** Animate the next recorded move. */
@@ -389,16 +411,16 @@ function replayStep() {
   if (!m) { pause(); refresh(); return; }
   void play(m.from, m.to);
 }
-function replayNext() { if (!rp) return; pause(); whenIdle(replayStep); refresh(); }
+function replayNext() { if (!rp || reel) return; pause(); whenIdle(replayStep); refresh(); }
 function replayToggle() {
-  if (!rp) return;
+  if (!rp || reel) return;
   if (rp.playing) { pause(); refresh(); return; }
   rp.playing = true; rp.token++; rig.director = true;
   const r = rp;
   whenIdle(() => { if (rp !== r) return; if (engine.history.length >= r.moves.length) seekNow(0); replayStep(); });
   refresh();
 }
-function replaySpeed() { if (!rp) return; rp.speed = rp.speed >= 4 ? 1 : rp.speed * 2; if (!queued) clock.userScale = rp.speed; refresh(); }
+function replaySpeed() { if (!rp || reel) return; rp.speed = rp.speed >= 4 ? 1 : rp.speed * 2; if (!queued) clock.userScale = rp.speed; refresh(); }
 /** Called when a replayed move has finished animating: keep playing after a short beat. */
 function replayed() {
   if (!rp) return;
@@ -411,6 +433,7 @@ function replayed() {
 /** Back to the live game as it was (a finished game shows its result card again). */
 function leaveReplay() {
   if (!rp) return;
+  endReel(false);
   const b = rp.back;
   rp = null; clock.userScale = baseScale; queued = null;
   hud.replay(false); hud.closeShare();
@@ -420,7 +443,118 @@ function leaveReplay() {
   resetState();
   if (over) showOver(refresh());
 }
-function replayExit() { if (!rp) return; pause(); const r = rp; whenIdle(() => { if (rp === r) leaveReplay(); }); }
+function replayExit() { if (reel) { reelExit(); return; } if (!rp) return; pause(); const r = rp; whenIdle(() => { if (rp === r) leaveReplay(); }); }
+
+// ---------- highlight reel ----------
+// The reel is a replay that jumps (instantly, as a scrub does) to each clip from reel.ts and animates
+// it with the full duel cinematics, a title card first, then ends on the final position. It keeps the
+// replay's discipline: everything waits for the running move (whenIdle), and leaving restores the
+// replay or the live game it started from. Recording renders at a fixed size and copies each frame,
+// overlays included, into a MediaRecorder until the end card has been shown.
+interface Reel { clips: Clip[]; from: 'live' | 'replay'; ply: number; speed: number; rec: Recorder | null }
+let reel: Reel | null = null, exportWait: ((r: Recording | null) => void) | null = null, stallTimer = 0;
+const NUM = '一二三四五六七八九十';
+/** The game a reel would be cut from: the replayed record, or the game on screen. */
+const reelSource = () => (rp ? { fen: rp.fen, moves: rp.moves } : { fen: startFen(engine), moves: plies(engine) });
+const settle = (r: Recording | null) => { const f = exportWait; exportWait = null; f?.(r); };
+function card(text: string, side: Caption['side'], life: number, sub?: string) { hud.reelCard(text, sub ?? '', side, life); burn.card = caption(text, side, life, sub); }
+/** Play the highlight reel; with `record`, also export it as a video. Returns false if it cannot start. */
+function startReel(record = false): boolean {
+  if (record && !canRecord()) { hud.toast('此浏览器不支持导出视频'); sfx.error(); return false; }
+  if (!reel && !reelSource().moves.length) { hud.toast('尚未落子'); sfx.error(); return false; }
+  if (record) sfx.unlock(); // inside the click, so the recording can carry sound
+  if (!rp && !queued) baseScale = clock.userScale;
+  hud.closeShare(); hud.closeVideo();
+  const prev = reel;
+  whenIdle(() => {
+    if (reel !== prev) return;
+    let from: Reel['from'] = 'replay', ply = engine.history.length, speed = rp?.speed ?? 1;
+    if (prev) { ({ from, ply, speed } = prev); dropRecording(prev); }
+    else if (rp) pause();
+    else { from = 'live'; openReplay({ fen: startFen(engine), moves: plies(engine), code: encodeRecord(engine) }, ply); speed = rp!.speed; }
+    const r: Reel = { clips: highlights(rp!.fen, rp!.moves), from, ply, speed, rec: null };
+    reel = r; rp!.speed = 1; clock.userScale = 1; rig.director = true;
+    hud.reel(true, record);
+    if (record) beginRecording(r);
+    void runReel(r);
+  });
+  return true;
+}
+async function runReel(r: Reel) {
+  const live = () => reel === r && !!rp;
+  const n = r.clips.length, total = rp!.moves.length;
+  for (let i = 0; i < n; i++) {
+    const c = r.clips[i];
+    if (engine.history.length !== c.start) seekNow(c.start);
+    rig.director = true;
+    const span = c.end - c.start + 1, show = (k: number) => hud.reelState(i, n, c.reason, (i + k / span) / (n + 0.5));
+    show(0);
+    card(`其${NUM[i] ?? i + 1} · ${c.reason}`, c.side, 2.2);
+    await wait(1.1); if (!live()) return;
+    while (engine.history.length < c.end) {
+      const m = rp!.moves[engine.history.length];
+      if (!(await play(m.from, m.to)) || !live()) return;
+      rig.director = true; show(engine.history.length - c.start);
+      await wait(0.35); if (!live()) return;
+    }
+    await wait(engine.history.at(-1)?.check && !over ? 0.9 : 0.4); if (!live()) return;
+  }
+  // End on the final position, with the result.
+  if (engine.history.length !== total) seekNow(total);
+  rig.director = true;
+  const st = engine.status();
+  hud.reelState(n, n, '', 1);
+  card(st.over ? '终局' : '集锦', st.winner ?? 'd', 3.4, st.over ? resultText(st) : `第 ${total} 手`);
+  await wait(3.4); if (!live()) return;
+  if (r.rec) await finishRecording(r);
+  if (reel === r) endReel(true);
+}
+function beginRecording(r: Reel) {
+  capturing = true; resize();
+  try { r.rec = new Recorder(canvas, canvas.width, canvas.height, sfx.capture()); }
+  catch (e) { console.warn('Cannot record:', e); hud.toast('无法导出视频'); stopCapture(); settle(null); hud.reel(true, false); return; }
+  r.rec.onError = (e) => {
+    console.warn('Recording failed:', e); hud.toast('视频导出失败');
+    if (reel === r) { dropRecording(r); settle(null); hud.reel(true, false); }
+  };
+  // A hidden or throttled page stops requestAnimationFrame; keep the simulation (and the video) going.
+  let prev = performance.now();
+  stallTimer = window.setInterval(() => {
+    const now = performance.now(), dt = (now - prev) / 1000; prev = now;
+    if (!manual && now - lastRaf > 200) step(Math.min(0.05, dt));
+  }, 33);
+}
+function stopCapture() { capturing = false; clearInterval(stallTimer); sfx.release(); resize(); }
+/** Abandon a recording in progress (cancel, exit, error, or a restart). */
+function dropRecording(r: Reel) { if (!r.rec) return; r.rec.cancel(); r.rec = null; stopCapture(); }
+async function finishRecording(r: Reel) {
+  const rec = r.rec!;
+  r.rec = null; // the reel no longer owns it: leaving now does not cancel the file being written
+  hud.reelState(r.clips.length, r.clips.length, '生成视频', 1);
+  let res: Recording | null = null;
+  try { res = await rec.finish(); } catch (e) { console.warn('Recording failed:', e); hud.toast('视频导出失败'); }
+  stopCapture();
+  if (res && !res.blob.size) { res = null; hud.toast('视频导出失败'); }
+  if (res) hud.offerVideo(res.blob, res.mime, res.durationMs);
+  settle(res);
+}
+/** Stop the reel. `restore` goes back to where it started (the replay at its ply, or the live game). */
+function endReel(restore: boolean) {
+  const r = reel;
+  if (!r) return;
+  reel = null;
+  dropRecording(r); settle(null);
+  hud.reel(false, false); hud.reelCard('', '', 'd', 0); burn.card = null;
+  clock.slow = 1; clock.slowLeft = 0; clock.next = null;
+  if (!rp) return;
+  rp.speed = r.speed;
+  if (!restore) return;
+  if (r.from === 'live') { leaveReplay(); return; }
+  clock.userScale = rp.speed; seekNow(r.ply); pause(); refresh();
+}
+/** Leave the reel (cancels an export), once the running move has finished. */
+function reelExit() { const r = reel; if (r) whenIdle(() => { if (reel === r) endReel(true); }); }
+
 /** Link and readable record of the game on screen (the whole recorded game during replay). */
 function shareInfo() {
   let e = engine, code = '';
@@ -486,6 +620,7 @@ hud.init({
   music: (on) => { sfx.unlock(); music.setOn(on); },
   fine: (on) => { fineModels.on = on; if (busy) rebuildQueued = true; else { select(-1); sync(); } }, // mid-move: rebuild as soon as it ends
   replay: { enter: () => void enterReplay(), prev: replayPrev, next: replayNext, toggle: replayToggle, speed: replaySpeed, seek: replaySeek, exit: replayExit, share: shareInfo },
+  reel: { start: () => void startReel(), export: () => void startReel(true), exit: reelExit },
 });
 const qBtn = document.getElementById('btn-quality')!, showQ = () => { qBtn.querySelector('span')!.textContent = '画质 ' + { high: '高', mid: '中', low: '低' }[quality.tier]; };
 qBtn.onclick = () => void quality.set(quality.next());
@@ -532,12 +667,13 @@ function step(realDt: number) {
   gu.uAb.value = Math.max(0, gu.uAb.value - realDt * 2.5);
   gu.uImpact.value = Math.max(0, gu.uImpact.value - realDt * 8);
   composer.render();
+  if (reel?.rec) { burn.time = clock.real; reel.rec.frame(burn); }
 }
 
-let last = performance.now(), manual = false; // manual: only __game.advance() steps the simulation
+let last = performance.now(), lastRaf = last, manual = false; // manual: only __game.advance() steps the simulation
 function frame(now: number) {
   if (!manual) step(Math.min(0.05, (now - last) / 1000));
-  last = now;
+  last = lastRaf = now;
   requestAnimationFrame(frame);
 }
 
@@ -546,7 +682,7 @@ sync();
 world.setMood(0, 0, 0, true); // open at dawn rather than easing there from the default dusk
 rig.reset('r');
 requestAnimationFrame(frame);
-quality.probe(() => manual);
+quality.probe(() => manual || !!reel);
 fromHash();
 
 // ---------- debug / test hook ----------
@@ -576,6 +712,20 @@ const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(
   replayTo(ply: number) { replaySeek(ply); },
   replayStep: replayNext, replayToggle, replaySpeed,
   replayExit,
+  /** Highlight clips of the game on screen (the replayed one during replay), in game order. */
+  highlights() { const s = reelSource(); return highlights(s.fen, s.moves); },
+  /** Play the highlight reel; reelExit() leaves it (and cancels an export). */
+  reel() { return startReel(); },
+  reelExit,
+  /** Play the reel and record it. Resolves with the file's details, or null if cancelled or failed. */
+  reelExport(): Promise<{ size: number; mime: string; durationMs: number; width: number; height: number; audio: boolean; url: string } | null> {
+    settle(null);
+    return new Promise((res) => {
+      exportWait = (r) => res(r && { size: r.blob.size, mime: r.mime, durationMs: Math.round(r.durationMs), width: r.width, height: r.height, audio: r.audio, url: hud.videoUrl });
+      if (!startReel(true)) settle(null);
+    });
+  },
+  get reelState() { return reel ? { clips: reel.clips.length, from: reel.from, recording: !!reel.rec } : null; },
   /** Quality tier: quality() returns it, quality('low' | 'mid' | 'high') switches (and saves) it. */
   quality(t?: 'low' | 'mid' | 'high') { return t ? quality.set(t).then(() => quality.tier) : quality.tier; },
   /** Drive the simulation manually (for hidden tabs where rAF is paused). */

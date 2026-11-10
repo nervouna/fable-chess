@@ -140,6 +140,40 @@ html, body {
 #share button { flex: 1; min-height: 44px; padding: 8px 6px; font-size: 16px; letter-spacing: 0.1em; color: var(--gold); background: rgba(14, 10, 9, 0.7); border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
 #share button:first-child { color: #1b0f08; background: linear-gradient(180deg, #f5d48a, #c99a45); border-color: transparent; }
 #share .note { margin-top: 10px; font-size: 12px; color: #8a7d68; letter-spacing: 0.05em; }
+#share .row.reel { margin-top: 8px; }
+
+/* Highlight reel: title card, a bar in the replay bar's place, and the exported video card */
+#reelcard { position: absolute; top: 19%; left: 0; right: 0; text-align: center; opacity: 0; z-index: 6; }
+#reelcard .t { display: block; font-size: clamp(38px, 6.4vw, 84px); line-height: 1.1; letter-spacing: 0.16em; margin-right: -0.16em; color: #fff3d6; white-space: nowrap; text-shadow: 0 0 22px rgba(255, 190, 90, 0.9), 0 0 70px rgba(255, 140, 40, 0.6), 0 4px 0 rgba(60, 30, 0, 0.8); }
+#reelcard .s { display: block; margin-top: 6px; font-size: clamp(18px, 2.4vw, 28px); letter-spacing: 0.5em; margin-right: -0.5em; color: var(--gold); }
+#reelcard .s:empty { display: none; }
+#reelcard.r .t { text-shadow: 0 0 22px rgba(255, 70, 20, 0.95), 0 0 70px rgba(255, 40, 0, 0.7), 0 4px 0 rgba(90, 10, 0, 0.8); }
+#reelcard.b .t { text-shadow: 0 0 22px rgba(40, 190, 255, 0.95), 0 0 70px rgba(0, 120, 255, 0.7), 0 4px 0 rgba(0, 30, 70, 0.8); }
+#reelcard.show { animation: reelcard 2.2s ease forwards; }
+@keyframes reelcard { 0% { opacity: 0; transform: translateY(-14px); filter: blur(8px); } 12% { opacity: 1; transform: none; filter: none; } 82% { opacity: 1; } 100% { opacity: 0; } }
+#reelbar { position: absolute; left: 50%; bottom: calc(16px + var(--sa-b)); transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); display: none; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; background: var(--ink); border: 1px solid var(--line); border-radius: 4px; backdrop-filter: blur(8px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); z-index: 6; pointer-events: auto; }
+#hud.reel #reelbar { display: flex; }
+#hud.reel #replay, #hud.reel .tools, #hud.reel .moves, #hud.reel .hint { display: none; }
+#reelbar .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+#rl-text { font-size: 14px; letter-spacing: 0.08em; color: #eadfc6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#reelbar .prog { height: 3px; border-radius: 2px; background: rgba(233, 192, 112, 0.2); overflow: hidden; }
+#rl-fill { display: block; height: 100%; width: 0; background: var(--gold); transition: width 0.4s; }
+#reelbar button { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 40px; padding: 6px 10px; color: #eadfc6; background: transparent; border: 1px solid transparent; border-radius: 3px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+#reelbar button:hover { background: rgba(233, 192, 112, 0.13); border-color: var(--line); color: #fff; }
+#reelbar button b { color: var(--gold); font-weight: normal; font-size: 15px; }
+#rl-export b { color: var(--red) !important; }
+#hud.exporting #rl-export { display: none; }
+#hud.exporting #rl-text::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--red); vertical-align: 1px; animation: blink 1s steps(2) infinite; }
+#hud.exporting #rl-fill { background: var(--red); }
+@keyframes blink { 50% { opacity: 0.2; } }
+#video { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.5); opacity: 0; visibility: hidden; transition: opacity 0.25s, visibility 0.25s; z-index: 9; pointer-events: auto; }
+#video.show { opacity: 1; visibility: visible; }
+#video .card { width: min(380px, calc(100vw - 32px)); padding: 16px; text-align: center; background: linear-gradient(180deg, rgba(40, 14, 10, 0.94), rgba(14, 10, 9, 0.94)); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); }
+#video .hd { font-size: 20px; letter-spacing: 0.4em; margin-right: -0.4em; color: var(--gold); }
+#video .note { margin: 10px 0 14px; font: 13px ui-monospace, monospace; color: #c9b891; }
+#video .row { display: flex; gap: 8px; }
+#video .row > * { flex: 1; display: grid; place-items: center; min-height: 44px; padding: 8px 6px; font: 16px var(--kai); letter-spacing: 0.1em; color: var(--gold); background: rgba(14, 10, 9, 0.7); border: 1px solid var(--line); border-radius: 3px; cursor: pointer; text-decoration: none; pointer-events: auto; }
+#video .row > a { color: #1b0f08; background: linear-gradient(180deg, #f5d48a, #c99a45); border-color: transparent; }
 #toast { position: absolute; left: 50%; top: 22%; transform: translate(-50%, 8px); padding: 8px 18px; font-size: 15px; letter-spacing: 0.1em; color: #fff3d6; background: rgba(14, 10, 9, 0.88); border: 1px solid var(--line); border-radius: 3px; opacity: 0; transition: opacity 0.25s, transform 0.25s; z-index: 10; white-space: nowrap; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
@@ -160,7 +194,7 @@ html, body {
   .hint, .tools kbd { display: none; }
   .tools button { min-height: 44px; }
   #over button { min-height: 48px; }
-  #replay button { min-height: 44px; } #rp-range { height: 44px; }
+  #replay button { min-height: 44px; } #rp-range { height: 44px; } #reelbar button { min-height: 44px; }
   .moves .hd button { min-height: 44px; min-width: 44px; }
 }
 
@@ -183,7 +217,8 @@ html, body {
   #over .big { font-size: clamp(56px, 12vw, 120px); }
   #over .sub { font-size: 22px; }
   #over button { min-height: 46px; padding: 10px 16px; font-size: 17px; letter-spacing: 0.15em; }
-  #over .row { gap: 8px; }
+  #over .row { gap: 6px; }
+  #over button { padding: 10px 12px; letter-spacing: 0.1em; }
   #replay { bottom: calc(8px + var(--sa-b)); padding: 3px 4px; gap: 0; }
   #replay button { flex-direction: column; gap: 1px; min-width: 44px; min-height: 44px; padding: 3px 2px; font-size: 11px; }
   #replay button b { font-size: 16px; line-height: 1.1; }
@@ -191,6 +226,11 @@ html, body {
   #rp-range { height: 44px; } .moves .hd button { min-height: 44px; min-width: 44px; }
   #intro .sub { font-size: 15px; letter-spacing: 0.6em; margin-right: -0.6em; }
   #duel { left: calc(5vw + var(--sa-l)); }
+  #reelbar { bottom: calc(8px + var(--sa-b)); }
+  #reelbar button { flex-direction: column; gap: 1px; min-height: 44px; padding: 3px 8px; font-size: 11px; }
+  #reelbar button b { font-size: 16px; line-height: 1.1; }
+  #rl-text { font-size: 13px; }
+  #reelcard { top: 17%; } #reelcard .t { font-size: clamp(28px, 7.6vw, 60px); letter-spacing: 0.1em; margin-right: -0.1em; }
 }
 @media (max-width: 760px) and (orientation: portrait) {
   .topbar { left: calc(6px + var(--sa-l)); right: calc(6px + var(--sa-r)); transform: none; justify-content: center; }

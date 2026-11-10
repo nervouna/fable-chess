@@ -117,7 +117,7 @@ void main(){
   vec3 body=mix(shallowC,deepC,deep)*amb*1.25;
   // Light filtering through a crest (cheap subsurface): brightest on wave fronts facing the sun.
   body+=shallowC*uSunCol*max(h.x-0.75,0.0)*0.6*(1.0-uStorm);
-  vec3 col=mix(body, sky*0.8, clamp(fres*(0.55+0.35*calm),0.0,0.85));
+  vec3 col=mix(body, sky*(0.8-0.15*calm), clamp(fres*0.6,0.0,0.8));
   // Sun: one broad sheen, one hard highlight, and at noon (and on the dusk path) a sparkle of glints.
   float sr=max(dot(R,uSun),0.0), sun=(1.0-0.85*uStorm);
   col+=uSunCol*(pow(sr,400.0)*3.0+pow(sr,60.0)*0.05)*sun;
@@ -135,7 +135,7 @@ void main(){
   float edge=exp(-pow(sd/0.07,2.0))+exp(-pow((sd-lap)/0.035,2.0))*0.6;
   float brk=noised(q*vec2(1.6,4.0)-vec2(t*speed*1.4,0.0)).x;
   foam=foam+edge*smoothstep(0.25,0.6,brk)+pf*smoothstep(0.2,0.55,brk);
-  foam+=smoothstep(1.2-uStorm*0.35,1.45-uStorm*0.3,h.x)*(0.25+0.75*uStorm);
+  foam+=smoothstep(1.3-uStorm*0.3,1.55-uStorm*0.25,h.x)*(0.2+0.7*uStorm);
   foam=clamp(foam,0.0,1.0);
   vec3 fc=amb*1.7+uSunCol*0.35*max(uSun.y,0.1);
   col=mix(col,fc,foam*0.85);

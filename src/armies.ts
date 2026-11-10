@@ -14,7 +14,7 @@ import { TIERS, type Settings, type Tier } from './quality';
 const RANKS: Record<Tier, { rows: number; per: number; gap: number; lo: boolean }> = {
   high: { rows: 4, per: 20, gap: 1.0, lo: false },
   mid: { rows: 4, per: 16, gap: 1.22, lo: false },
-  low: { rows: 3, per: 12, gap: 1.6, lo: true },
+  low: { rows: 3, per: 14, gap: 1.38, lo: true },
 };
 const GROUND = -0.1, FRONT = 12.9, ROW = 1.12, AISLE = 2.5, BACK = 20.6;
 const hash = (i: number, k: number) => { const s = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return s - Math.floor(s); };

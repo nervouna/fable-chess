@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <b><a href="https://nervouna.github.io/fable-chess/">▶ Play it in your browser</a></b>
+</p>
+
+<p align="center">
   <img alt="Three.js" src="https://img.shields.io/badge/three.js-0.187-black">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
   <img alt="Vite" src="https://img.shields.io/badge/Vite-8-646cff">
@@ -62,6 +66,8 @@ npm run dev
 ```
 
 Open the printed URL. Requires Node 23 or newer for the tests (they run TypeScript directly).
+
+Every push to `main` is tested, built and published to GitHub Pages by `.github/workflows/deploy.yml`.
 
 ```bash
 npm test         # rules engine and AI: perft, tactics, 20 self-play games

@@ -5,7 +5,9 @@ import { GLYPH } from './units';
 const $ = (id: string) => document.getElementById(id)!;
 
 export type Mode = 'pvp' | 'pve' | 'watch';
-export interface HudHandlers { reset(): void; undo(): void; restart(): void; mode(m: Mode): void; music(on: boolean): void; fine(on: boolean): void; autoCam(on: boolean): void; badges(on: boolean): void; sound(on: boolean): void }
+export interface HudHandlers { reset(): void; undo(): void; restart(): void; mode(m: Mode): void; music(on: boolean): void; fine(on: boolean): void; autoCam(on: boolean): void; badges(on: boolean): void; sound(on: boolean): void; replay: ReplayHandlers }
+/** Replay controls. `share` returns the link and the readable record of the game on screen. */
+export interface ReplayHandlers { enter(): void; prev(): void; next(): void; toggle(): void; speed(): void; seek(ply: number): void; exit(): void; share(): { link: string; text: string } }
 
 class Hud {
   private root = $('hud');
@@ -21,10 +23,30 @@ class Hud {
     const fine = toggle('btn-fine', h.fine);
     const modes: Mode[] = ['pvp', 'pve', 'watch'];
     for (const m of modes) $('mode-' + m).onclick = () => h.mode(m);
+    const r = h.replay;
+    for (const id of ['btn-replay', 'tool-replay', 'over-replay']) $(id).onclick = r.enter;
+    for (const id of ['btn-share', 'tool-share', 'rp-share']) $(id).onclick = () => this.openShare(r.share());
+    $('rp-prev').onclick = r.prev; $('rp-next').onclick = r.next; $('rp-play').onclick = r.toggle; $('rp-speed').onclick = r.speed; $('rp-exit').onclick = r.exit;
+    const range = $('rp-range') as HTMLInputElement;
+    range.oninput = () => r.seek(+range.value);
+    $('share-close').onclick = () => this.closeShare();
+    $('share').onclick = (e) => { if (e.target === $('share')) this.closeShare(); };
+    $('share-link').onclick = () => void this.copy(this.shared.link, '链接已复制');
+    $('share-text').onclick = () => void this.copy(this.shared.text, '棋谱已复制');
     window.addEventListener('keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if (k === 'r' || k === ' ') { h.reset(); e.preventDefault(); }
+      if ((e.target as HTMLElement).tagName === 'INPUT' && k !== 'escape') return;
+      if (this.replaying) {
+        // Replay keys take over the arrows, space and escape; the rest keep their meaning.
+        if (k === 'arrowleft') { r.prev(); e.preventDefault(); return; }
+        if (k === 'arrowright') { r.next(); e.preventDefault(); return; }
+        if (k === ' ') { r.toggle(); e.preventDefault(); return; }
+        if (k === 'escape') { if (this.shareOpen) this.closeShare(); else r.exit(); return; }
+      }
+      if (k === 'escape' && this.shareOpen) this.closeShare();
+      else if (k === 'p') r.enter();
+      else if (k === 'r' || k === ' ') { h.reset(); e.preventDefault(); }
       else if (k === 'z') h.undo();
       else if (k === 'n') h.restart();
       else if (k === 'c') cam.click();
@@ -102,6 +124,50 @@ class Hud {
   duelHide() { clearTimeout(this.duelTimer); $('duel').className = ''; }
 
   cinematic(on: boolean) { this.root.classList.toggle('cine', on); }
+
+  // ---------- replay ----------
+  private replaying = false;
+  private shareOpen = false;
+  private shared = { link: '', text: '' };
+  private toastTimer = 0;
+  /** Show or hide the replay bar. */
+  replay(on: boolean) { this.replaying = on; this.root.classList.toggle('replay', on); }
+  /** Update the bar: ply shown, plies in the record, playing or paused, speed, and the result once reached. */
+  replayState(ply: number, total: number, playing: boolean, speed: number, result: string) {
+    const range = $('rp-range') as HTMLInputElement;
+    range.max = String(total); range.value = String(ply);
+    range.style.setProperty('--fill', (total ? (ply / total) * 100 : 0) + '%');
+    $('rp-ply').textContent = `${ply} / ${total}`;
+    $('rp-play').querySelector('b')!.textContent = playing ? '❚❚' : '▶\uFE0E';
+    $('rp-play').querySelector('span')!.textContent = playing ? '暂停' : '播放';
+    $('rp-speed').querySelector('b')!.textContent = speed + '×';
+    $('rp-prev').toggleAttribute('disabled', ply <= 0); $('rp-next').toggleAttribute('disabled', ply >= total);
+    const t = $('turn');
+    t.textContent = result || `复盘 · ${ply ? '第 ' + ply + ' 手' : '开局'}`;
+  }
+  openShare(s: { link: string; text: string }) {
+    this.shared = s; this.shareOpen = true;
+    ($('share-url') as HTMLInputElement).value = s.link;
+    $('share').className = 'show';
+  }
+  closeShare() { this.shareOpen = false; $('share').className = ''; }
+  /** Copy to the clipboard, falling back to a selected text field where the API is unavailable or refused. */
+  async copy(text: string, done: string) {
+    try { await navigator.clipboard.writeText(text); this.toast(done); return; } catch { /* insecure context or no focus */ }
+    const f = document.createElement('textarea');
+    f.value = text; f.style.cssText = 'position:fixed;opacity:0;top:0;left:0'; document.body.append(f); f.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* unsupported */ }
+    f.remove();
+    this.toast(ok ? done : '复制失败，请手动复制');
+    if (!ok) ($('share-url') as HTMLInputElement).select();
+  }
+  toast(text: string) {
+    const t = $('toast');
+    t.textContent = text; t.className = 'show';
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => { t.className = ''; }, 2200);
+  }
 }
 
 export const hud = new Hud();

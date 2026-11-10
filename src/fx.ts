@@ -210,9 +210,9 @@ class FX {
     }));
     m.position.set(p.x, groundHeight(p.x, p.z), p.z); m.renderOrder = 9;
     this.scene.add(m);
-    tween(dur, (t) => { const w = radius * (1.5 - 1.35 * ease.out3(t)); m.scale.set(w, height * (0.5 + 0.5 * ease.out3(Math.min(1, t * 4))), w); m.material.opacity = 1 - t * t; m.rotation.y = t * 2; })
+    tween(dur, (t) => { const w = radius * (1.0 - 0.85 * ease.out3(t)); m.scale.set(w, height * (0.5 + 0.5 * ease.out3(Math.min(1, t * 4))), w); m.material.opacity = 0.55 * (1 - t * t); m.rotation.y = t * 2; })
       .then(() => { m.removeFromParent(); m.material.dispose(); });
-    this.flash(p, color, 90, dur * 0.7);
+    this.flash(p, color, 45, dur * 0.6);
   }
 
   /** Chunks of paving thrown up by a heavy impact. */

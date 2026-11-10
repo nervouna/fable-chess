@@ -802,7 +802,7 @@ function slam(v: Unit, power: number) {
 const glyphOf = (v: Unit) => (v.badge.material as THREE.SpriteMaterial).map;
 /** The moment of destruction: a pillar of the unit's colour, its glyph burning away, a burst of motes. */
 function obliterate(v: Unit, pos: THREE.Vector3, size = 1) {
-  fx.pillar(pos, glowOf(v), 9 + 3 * size, 0.8 + 0.4 * size, 0.9); fx.pillar(pos, 0xffffff, 6 + 2 * size, 0.35 * size, 0.6);
+  fx.pillar(pos, glowOf(v), 9 + 3 * size, 0.55 + 0.25 * size, 0.9); fx.pillar(pos, 0xffffff, 6 + 2 * size, 0.2 * size, 0.6);
   fx.ghost(glyphOf(v), pos, v.height);
   fx.shockwave(pos, glowOf(v), 3.2 * size, 0.7); fx.embers(pos, Math.round(26 * size), glowOf(v), 0.7 * size, 3.5);
 }
@@ -830,7 +830,7 @@ const DEATH: Record<PType, DeathFn> = {
   async K(v) {
     const p = v.parts, pos = v.root.position;
     sfx.gong();
-    fx.pillar(pos, 0xffffff, 16, 1.6, 1.4); fx.rubble(pos, 10, 1.2);
+    fx.pillar(pos, 0xffffff, 16, 1.0, 1.4); fx.rubble(pos, 10, 1.2);
     fx.debris(p.banner, fling(V().set(Math.sin(v.root.rotation.y), 0, Math.cos(v.root.rotation.y)), -2, 5.5, 0.5), 5, 2.6, { keep: true });
     await tween(0.9, (t) => {
       p.legL.rotation.x = 1.45 * t; p.legR.rotation.x = 1.3 * t; p.g.position.y = -0.52 * t;
@@ -841,7 +841,7 @@ const DEATH: Record<PType, DeathFn> = {
     fx.debris(p.weapon, V().set(randS(1), 5.5, randS(1)), 6, 2.4, { stick: 0.9 });
     fx.dust(pos, 24, 1.6); scars.mark('crack', pos, 5.2, 0.65); rig.shake(0.9); sfx.stomp(1.4);
     for (let i = 0; i < 3; i++) void wait(i * 0.22).then(() => { fx.shockwave(pos, i % 2 ? 0xffffff : glowOf(v), 5 + i * 2.5, 1.2); fx.rubble(pos, 6, 1); });
-    fx.ghost(glyphOf(v), pos, v.height); fx.pillar(pos, glowOf(v), 14, 1.2, 1.6);
+    fx.ghost(glyphOf(v), pos, v.height); fx.pillar(pos, glowOf(v), 14, 0.9, 1.6);
     await wait(1.1);
   },
   // Guard: hurled spinning the length of the palace.
@@ -890,7 +890,7 @@ const DEATH: Record<PType, DeathFn> = {
     sfx.crash(); sfx.explode(); rig.shake(1);
     fx.explosion(pos, kind === 'blast' ? 1.3 : 1.0); fx.fire(V().copy(pos).setY(0.6), 30, 1.8); fx.sparks(V().copy(pos).setY(0.6), dir, 90, 0xffb050, 13);
     fx.dust(pos, kind === 'crush' ? 40 : 24, 1.9); fx.rubble(pos, 9, 1.1);
-    fx.pillar(pos, 0xffa040, 9, 1.3, 0.8); obliterate(v, pos, 1.2);
+    obliterate(v, pos, 1.1);
     scars.mark('scorch', pos, 3.2, 0.55); scars.mark('crack', pos, 2.4, 0.45);
     for (const w of p.wheels) fx.debris(w, fling(dir, rand(3, 8), rand(5, 9) * up, 6), 16, rand(2.0, 2.8), { keep: true, smoke: Math.random() < 0.5 });
     fx.debris(p.rider.g, fling(dir, 4, 10), 11, 2.0);
@@ -905,7 +905,7 @@ const DEATH: Record<PType, DeathFn> = {
     await wait(0.08);
     sfx.explode(); sfx.boom(1); rig.shake(1.3);
     fx.explosion(pos, 1.8); scars.blast(pos, 1.3); fx.rubble(pos, 14, 1.3);
-    fx.pillar(pos, 0xffa040, 13, 1.6, 1.0); obliterate(v, pos, 1.4);
+    obliterate(v, pos, 1.3);
     for (let i = 0; i < 26; i++) fx.smoke(V().set(pos.x + randS(0.8), 1.5 + rand(2.5), pos.z + randS(0.8)), 1, 1.6); // rising cap
     fx.debris(p.barrel, V().set(dir.x * 2.5 + randS(1), 17 * up, dir.z * 2.5 + randS(1)), 18, 3.2, { smoke: true, keep: true });
     for (const w of p.wheels) fx.debris(w, fling(dir, rand(3, 8), rand(6, 10) * up, 7), 16, 2.5, { keep: true, smoke: true });

@@ -37,8 +37,11 @@ class CameraRig {
     const pts = new Map<number, { x: number; y: number }>();
     let downX = 0, downY = 0, moved = 0, button = 0, touch = false;
     // Touch: once a second finger lands the gesture can no longer end in a tap. `two` is the last
-    // two-finger frame (spread, angle, centroid y), re-seeded whenever the finger count changes.
-    let multi = false, two: { d: number; a: number; y: number } | null = null, lastTap = { t: -1e9, x: 0, y: 0 };
+    // applied two-finger frame (spread, angle, centroid y), re-seeded whenever the finger count
+    // changes. Each two-finger gesture locks to one kind after 10px of travel, so an anchored-thumb
+    // pinch does not also tilt: 'tilt' (both fingers move up or down together) or 'zoom' (pinch and twist).
+    let multi = false, two: { d: number; a: number; y: number } | null = null, lock: 'tilt' | 'zoom' | null = null;
+    let lastTap = { t: -1e9, x: 0, y: 0 };
     const slop = () => (touch ? 12 : 5);
     const ndc = (e: PointerEvent) => { const r = dom.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); };
     const pair = () => {
@@ -51,7 +54,7 @@ class CameraRig {
       this.dragging = true; this.hold = 12;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 1) { downX = e.clientX; downY = e.clientY; moved = 0; button = e.button; touch = e.pointerType === 'touch'; multi = false; }
-      if (pts.size >= 2) { multi = true; two = pair(); }
+      if (pts.size >= 2) { multi = true; two = pair(); lock = null; }
     });
     dom.addEventListener('pointermove', (e) => {
       const p = pts.get(e.pointerId);
@@ -61,9 +64,16 @@ class CameraRig {
       if (pts.size >= 2) {
         // Pinch zooms, twist turns the board, a shared vertical drag tilts.
         const n = pair(), o = two ?? n;
-        this.user.dist = clamp(this.user.dist * (o.d / n.d), MIN_DIST, MAX_DIST);
-        this.user.yaw += angDiff(o.a, n.a); // the board turns with the fingers
-        this.user.pitch = clamp(this.user.pitch + (n.y - o.y) * 0.005, MIN_PITCH, MAX_PITCH);
+        if (!lock) {
+          const spread = Math.abs(n.d - o.d), arc = Math.abs(angDiff(o.a, n.a)) * n.d / 2, rise = Math.abs(n.y - o.y);
+          if (Math.max(spread, arc, rise) < 10) return; // `two` stays at the start, so nothing is lost
+          lock = rise > spread + arc ? 'tilt' : 'zoom';
+        }
+        if (lock === 'tilt') this.user.pitch = clamp(this.user.pitch + (n.y - o.y) * 0.005, MIN_PITCH, MAX_PITCH);
+        else {
+          this.user.dist = clamp(this.user.dist * (o.d / n.d), MIN_DIST, MAX_DIST);
+          this.user.yaw += angDiff(o.a, n.a); // the board turns with the fingers
+        }
         two = n; return;
       }
       if (multi) return; // the finger left over from a pinch: wait for it to lift
@@ -81,7 +91,7 @@ class CameraRig {
     const up = (e: PointerEvent) => {
       if (!pts.delete(e.pointerId)) return;
       this.dragging = pts.size > 0;
-      two = pts.size >= 2 ? pair() : null;
+      two = pts.size >= 2 ? pair() : null; lock = null;
       if (pts.size > 0 || multi || moved >= slop() || button !== 0 || e.type !== 'pointerup') return;
       if (touch) {
         // A second quick tap on the same spot resets the view instead of clicking again.

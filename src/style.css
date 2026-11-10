@@ -127,7 +127,7 @@ html, body {
 }
 
 /* Phones, portrait and landscape: the tool panel becomes a grid of labelled icons (six per row in
-   portrait, three columns in landscape) that absorbs extra buttons by adding rows. */
+   portrait, three or two columns in landscape) that absorbs extra buttons by adding rows. */
 @media (max-width: 760px), (max-height: 500px) {
   .topbar { top: calc(6px + var(--sa-t)); gap: 6px; }
   .title { padding: 3px 12px 5px; } .title .name { font-size: 18px; } .title .turn { font-size: 13px; }
@@ -148,7 +148,7 @@ html, body {
   #intro .sub { font-size: 15px; letter-spacing: 0.6em; margin-right: -0.6em; }
   #duel { left: calc(5vw + var(--sa-l)); }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px) and (orientation: portrait) {
   .topbar { left: calc(6px + var(--sa-l)); right: calc(6px + var(--sa-r)); transform: none; justify-content: center; }
   .camp { flex: 1 1 0; } .title { flex: none; }
   .tray { gap: 0; padding-left: 5px; } .camp.r .tray { padding: 0 5px 0 0; }
@@ -158,7 +158,7 @@ html, body {
   #duel { bottom: calc(11vh + 12px); }
   #duel .nm { font-size: clamp(34px, 11vw, 64px); }
 }
-@media (max-height: 500px) and (min-width: 761px) {
+@media (max-height: 500px) and (orientation: landscape), (max-width: 760px) and (orientation: landscape) {
   .camp { min-width: 120px; }
   .tools { right: calc(8px + var(--sa-r)); bottom: calc(8px + var(--sa-b)); grid-template-columns: repeat(3, 52px); }
   .moves { left: calc(8px + var(--sa-l)); bottom: calc(8px + var(--sa-b)); width: 150px; max-height: 46vh; }
@@ -168,3 +168,4 @@ html, body {
   #over .card { transform: none; }
   #over .row { margin-top: 18px; }
 }
+@media (max-width: 760px) and (orientation: landscape) { .tools { grid-template-columns: repeat(2, 52px); } .moves { display: none; } }

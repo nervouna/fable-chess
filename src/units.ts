@@ -4,7 +4,8 @@ import type { Piece, PType, Side } from './engine';
 import { disposeTree, groundHeight, rand, sqPos } from './core';
 import { fx } from './fx';
 import { box, clothMat, cone, cyl, glyphTexture, group, mesh, sph, std, TEAM } from './kit';
-import { instantiate, model } from './models';
+import { dropModels, instantiate, model, useModels } from './models';
+import type { Detail } from './quality';
 
 export const GLYPH: Record<Side, Record<PType, string>> = {
   r: { K: '帥', A: '仕', B: '相', N: '傌', R: '俥', C: '炮', P: '兵' },
@@ -477,13 +478,16 @@ export class Unit {
   busy = false;
   dead = false;
   seed = rand(100);
+  /** Detail level of the authored model this unit was built from (none when procedural). */
+  private models?: Detail;
 
   constructor(piece: Piece, sq: number, scene: THREE.Scene) {
     this.piece = piece;
     const M = mats(piece.side), T = TEAM[piece.side];
     this.root.add(this.body);
-    const fine = FINE[piece.type];
-    const b = (fineModels.on && model(fine.asset) ? fine.build : BUILD[piece.type])(M, piece.side, this.body);
+    const fine = FINE[piece.type], authored = fineModels.on && !!model(fine.asset);
+    if (authored) this.models = useModels();
+    const b = (authored ? fine.build : BUILD[piece.type])(M, piece.side, this.body);
     this.parts = b.parts; this.rest = b.rest; this.skeleton = b.skeleton; this.rest();
     this.height = HEIGHT[piece.type];
 
@@ -564,6 +568,7 @@ export class Unit {
   private wind = 0;
 
   dispose() {
+    if (this.models) { dropModels(this.models); this.models = undefined; }
     this.dead = true; disposeTree(this.root); this.pick.geometry.dispose(); this.ring.material.dispose(); (this.badge.material as THREE.Material).dispose();
   }
 }

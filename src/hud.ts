@@ -32,6 +32,7 @@ class Hud {
       else if (k === 'm') snd.click();
       else if (k === 'b') mus.click();
       else if (k === 'h') fine.click();
+      else if (k === 'q') $('btn-quality').click();
       else if (k === '1' || k === '2' || k === '3') h.mode(modes[+k - 1]);
     });
   }

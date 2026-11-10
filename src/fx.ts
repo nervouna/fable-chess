@@ -1,6 +1,7 @@
 // Visual effects: pooled particles, shockwaves, slash arcs, light flashes and rigid debris.
 import * as THREE from 'three';
 import { disposeTree, ease, groundHeight, rand, randS, terraceInset, tween, WATER_Y } from './core';
+import { quality } from './quality';
 
 interface Emit {
   x: number; y: number; z: number; vx?: number; vy?: number; vz?: number;
@@ -23,6 +24,8 @@ const tc = new THREE.Color(), tc2 = new THREE.Color();
 class PSys {
   points: THREE.Points;
   private n: number; private cur = 0;
+  /** Live pool size (<= n) and share of emits kept, both set by the quality tier. */
+  private limit: number; keep = 1;
   private pos: Float32Array; private col: Float32Array; private size: Float32Array;
   private vel: Float32Array; private c0: Float32Array; private c1: Float32Array;
   private life: Float32Array; private age: Float32Array; private s0: Float32Array; private s1: Float32Array;
@@ -30,7 +33,7 @@ class PSys {
   mat: THREE.ShaderMaterial;
 
   constructor(n: number, additive: boolean) {
-    this.n = n;
+    this.n = this.limit = n;
     const f = (k: number) => new Float32Array(n * k);
     this.pos = f(3); this.col = f(4); this.size = f(1); this.vel = f(3); this.c0 = f(3); this.c1 = f(3);
     this.life = f(1); this.age = f(1); this.s0 = f(1); this.s1 = f(1); this.grav = f(1); this.drag = f(1); this.alpha = f(1);
@@ -49,8 +52,16 @@ class PSys {
     this.points.renderOrder = additive ? 11 : 10;
   }
 
+  /** Shrink or restore the pool to `share` of its full size and thin out emits to match. */
+  setBudget(share: number) {
+    this.keep = share; this.limit = Math.max(1, Math.round(this.n * share)); this.cur %= this.limit;
+    for (let i = this.limit; i < this.n; i++) { this.life[i] = 0; this.size[i] = 0; this.col[i * 4 + 3] = 0; }
+    this.points.geometry.setDrawRange(0, this.limit);
+  }
+
   emit(e: Emit) {
-    const i = this.cur; this.cur = (this.cur + 1) % this.n;
+    if (this.keep < 1 && Math.random() > this.keep) return;
+    const i = this.cur; this.cur = (this.cur + 1) % this.limit;
     this.pos[i * 3] = e.x; this.pos[i * 3 + 1] = e.y; this.pos[i * 3 + 2] = e.z;
     this.vel[i * 3] = e.vx ?? 0; this.vel[i * 3 + 1] = e.vy ?? 0; this.vel[i * 3 + 2] = e.vz ?? 0;
     tc.set(e.c); tc2.set(e.c2 ?? e.c);
@@ -61,8 +72,8 @@ class PSys {
   }
 
   update(dt: number) {
-    const { pos, vel, col, size, life, age, n } = this;
-    for (let i = 0; i < n; i++) {
+    const { pos, vel, col, size, life, age, limit } = this;
+    for (let i = 0; i < limit; i++) {
       if (life[i] <= 0) continue;
       age[i] += dt;
       const t = age[i] / life[i];
@@ -79,7 +90,10 @@ class PSys {
       col[q + 3] = this.alpha[i] * (this.fin[i] ? Math.sin(Math.PI * t) : 1 - t * t);
     }
     const g = this.points.geometry;
-    g.attributes.position.needsUpdate = true; g.attributes.aColor.needsUpdate = true; g.attributes.aSize.needsUpdate = true;
+    for (const [k, w] of [['position', 3], ['aColor', 4], ['aSize', 1]] as const) {
+      const a = g.attributes[k] as THREE.BufferAttribute;
+      a.clearUpdateRanges(); a.addUpdateRange(0, limit * w); a.needsUpdate = true;
+    }
   }
 }
 
@@ -113,11 +127,15 @@ class FX {
   init(scene: THREE.Scene) {
     this.scene = scene;
     scene.add(this.add.points, this.alpha.points);
+    this.applyQuality();
     for (let i = 0; i < 3; i++) {
       const l = new THREE.PointLight(0xffffff, 0, 22, 1.6);
       scene.add(l); this.flashes.push(l);
     }
   }
+
+  /** Particle budgets follow the quality tier. */
+  applyQuality() { this.add.setBudget(quality.s.particles); this.alpha.setBudget(quality.s.particles); }
 
   setViewport(heightPx: number, fovDeg: number) {
     const s = (heightPx * 0.5) / Math.tan((fovDeg * Math.PI) / 360);
@@ -217,6 +235,7 @@ class FX {
 
   /** Chunks of paving thrown up by a heavy impact. */
   rubble(p: THREE.Vector3, n = 8, power = 1) {
+    n = Math.max(1, Math.round(n * quality.s.debris));
     for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(this.rockGeo, this.rockMat);
       const a = rand(Math.PI * 2), r = rand(0.2, 0.7);

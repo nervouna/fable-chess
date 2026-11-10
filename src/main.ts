@@ -22,13 +22,14 @@ import { encode, hashKey, type AiRequest, type AiResult } from './ai';
 import { music, Score } from './music';
 import { fineModels, GLYPH } from './units';
 import { grime, loadModels } from './models';
+import { quality, type Settings } from './quality';
 
 // ---------- renderer ----------
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.s.dpr));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = quality.s.shadowType;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 
@@ -40,10 +41,13 @@ rig.init(canvas);
 world.cam = rig.cam;
 world.onThunder = (d) => sfx.thunder(d);
 
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: quality.s.msaa }));
 composer.addPass(new RenderPass(scene, rig.cam));
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.42, 0.7, 0.95);
 composer.addPass(bloom);
+const bloomSize = bloom.setSize.bind(bloom), bs = (v: number) => Math.max(1, Math.round(v * (quality.s.bloom || 1)));
+bloom.setSize = (w, h) => bloomSize(bs(w), bs(h)); // lower tiers blur a smaller copy of the frame
+bloom.enabled = quality.s.bloom > 0;
 // Final grade: cinematic tilt-shift depth blur, chromatic fringe on impacts, desaturation and vignette.
 const grade = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, uTilt: { value: 0 }, uDesat: { value: 0 }, uAb: { value: 0 }, uImpact: { value: 0 }, uTint: { value: new THREE.Color() }, uRes: { value: new THREE.Vector2(1, 1) } },
@@ -74,7 +78,7 @@ composer.addPass(new OutputPass());
 const post = { tilt: 0, desat: 0 }; // targets, smoothed per frame
 
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight, pr = Math.min(window.devicePixelRatio, 2);
+  const w = window.innerWidth, h = window.innerHeight, pr = Math.min(window.devicePixelRatio, quality.s.dpr);
   renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
   composer.setPixelRatio(pr); composer.setSize(w, h);
   grade.uniforms.uRes.value.set(w * pr, h * pr);
@@ -83,6 +87,12 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
+/** Render side of a quality switch: pixel ratio, shadow filtering, MSAA and bloom. */
+function applyQuality(s: Settings) {
+  renderer.shadowMap.type = s.shadowType; bloom.enabled = s.bloom > 0;
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== s.msaa) { rt.samples = s.msaa; rt.dispose(); }
+  resize();
+}
 
 // ---------- markers ----------
 const mk = (geo: THREE.BufferGeometry, color: number, opacity = 1) => {
@@ -367,6 +377,14 @@ hud.init({
   music: (on) => { sfx.unlock(); music.setOn(on); },
   fine: (on) => { fineModels.on = on; if (busy) rebuildQueued = true; else { select(-1); sync(); } }, // mid-move: rebuild as soon as it ends
 });
+const qBtn = document.getElementById('btn-quality')!, showQ = () => { qBtn.querySelector('span')!.textContent = '画质 ' + { high: '高', mid: '中', low: '低' }[quality.tier]; };
+qBtn.onclick = () => void quality.set(quality.next());
+quality.onChange.push(async (s) => {
+  applyQuality(s); world.applyQuality(s); fx.applyQuality(); showQ();
+  await loadModels(s.models);
+  if (busy) rebuildQueued = true; else { select(-1); sync(); }
+});
+showQ();
 
 // ---------- main loop ----------
 function step(realDt: number) {
@@ -413,11 +431,12 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
-await loadModels(); // authored models must be ready before the first units are built
+await loadModels(quality.s.models); // authored models must be ready before the first units are built
 sync();
 world.setMood(0, 0, 0, true); // open at dawn rather than easing there from the default dusk
 rig.reset('r');
 requestAnimationFrame(frame);
+quality.probe(() => manual);
 
 // ---------- debug / test hook ----------
 const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
@@ -434,6 +453,8 @@ const yieldTask = () => new Promise<void>((r) => { const c = new MessageChannel(
   move(s: string) { return play(sq(s.slice(0, 2)), sq(s.slice(2, 4))); },
   click(s: string) { const i = sq(s), p = engine.board[i]; if (selected >= 0 && legal.includes(i)) return play(selected, i); if (p && p.side === engine.turn) select(i); return legal.map(sqName); },
   undo, restart, setMode,
+  /** Quality tier: quality() returns it, quality('low' | 'mid' | 'high') switches (and saves) it. */
+  quality(t?: 'low' | 'mid' | 'high') { return t ? quality.set(t).then(() => quality.tier) : quality.tier; },
   /** Drive the simulation manually (for hidden tabs where rAF is paused). */
   async advance(seconds: number, fps = 30) { for (let i = 0; i < seconds * fps; i++) { step(1 / fps); await yieldTask(); } },
 };

@@ -92,6 +92,10 @@ Every push to `main` is tested, built and deployed to GitHub Pages.
 | `1` / `2` / `3` | Two players / versus computer / spectate |
 | `C` / `G` / `M` / `B` | Toggle auto camera / unit glyph badges / sound / music |
 | `H` | Toggle authored models (falls back to the original code-built ones) |
+| `Q` | Cycle quality: low / mid / high (also `?q=low` in the URL) |
+
+Quality is picked from the device on first load, then from your choice.
+Low and mid cap resolution, shadows and effects and use lighter models.
 
 On a phone or tablet:
 
@@ -120,7 +124,9 @@ On a phone or tablet:
 | `src/audio.ts`, `src/music.ts` | Synthesised effects, rain and thunder; adaptive score |
 | `src/hud.ts`, `src/style.css` | DOM overlay |
 | `src/main.ts` | Renderer, post-processing, input, game flow |
+| `src/quality.ts` | Quality tiers, first-load choice, switching |
 | `tools/blender/build.py` | Generates the seven unit models |
+| `tools/blender/lod.mjs` | Decimated `_mid` / `_lo` variants for the lower tiers |
 
 The post chain is MSAA → bloom → a grading pass (tilt-shift, chromatic fringe, impact frame,
 desaturation, vignette) → ACES tone mapping.
@@ -133,6 +139,7 @@ __game.move('h2e2')                // resolves when the animation ends
 __game.setMode('watch')            // 'pvp' | 'pve' | 'watch'
 __game.weather(time, storm, rain)  // pin the weather; no arguments releases it
 __game.fine(false)                 // switch to the code-built models
+await __game.quality('low')        // 'low' | 'mid' | 'high'; no argument returns the tier
 __game.manual = true               // stop the frame loop, then step it yourself
 await __game.advance(seconds)
 ```
@@ -148,6 +155,7 @@ each on its own bone, so they fly apart when destroyed.
 ```bash
 blender -b -P tools/blender/build.py -- public/models            # all units
 blender -b -P tools/blender/build.py -- public/models pawn king  # some
+node tools/blender/lod.mjs public/models                         # then the lighter variants
 ```
 
 The generated files are committed, so Blender is only needed to change the models. `src/models.ts`

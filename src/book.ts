@@ -1,4 +1,5 @@
 // Opening book: a few mainstream lines, a handful of plies deep, written in traditional notation.
+// Names follow the ECCO titles (中国象棋开局编号).
 // At load every line is replayed through the rules engine (each move resolved by its notation among
 // the legal moves, so a wrong wing cannot slip in), mirrored left-right, and compiled into a map from
 // position hash to weighted candidate moves. The AI plays from it while the game is still in it.
@@ -18,16 +19,16 @@ export interface Line {
 }
 
 export const LINES: Line[] = [
-  { name: '中炮过河车对屏风马', red: '中炮', black: '中炮对屏风马', sharp: 2, moves: '炮二平五 马8进7 马二进三 车9平8 车一平二 马2进3 兵七进一 卒7进1 车二进六 炮8平9' },
+  { name: '中炮过河车互进七兵对屏风马', red: '中炮', black: '中炮对屏风马', sharp: 2, moves: '炮二平五 马8进7 马二进三 车9平8 车一平二 马2进3 兵七进一 卒7进1 车二进六 炮8平9' },
   { name: '五七炮对屏风马', red: '中炮', black: '中炮对屏风马', sharp: 1, moves: '炮二平五 马8进7 马二进三 卒7进1 车一平二 车9平8 马八进九 马2进3 炮八平七 车1平2 车九平八' },
   { name: '顺炮直车对横车', red: '中炮', black: '顺炮', sharp: 2, moves: '炮二平五 炮8平5 马二进三 马8进7 车一平二 车9进1 马八进七 车9平4' },
-  { name: '中炮直车对列炮', red: '中炮', black: '列炮', sharp: 2, moves: '炮二平五 炮2平5 马二进三 马2进3 车一平二 车1平2 马八进七 马8进7' },
+  { name: '中炮对列炮', red: '中炮', black: '中炮对列炮', sharp: 2, moves: '炮二平五 炮2平5 马二进三 马2进3 车一平二 车1平2 马八进七 马8进7' },
   { name: '中炮对反宫马', red: '中炮', black: '中炮对反宫马', sharp: 1, moves: '炮二平五 马2进3 马二进三 炮8平6 车一平二 马8进7' },
   { name: '飞相对进7卒', red: '飞相局', black: '飞相对进7卒', sharp: 0, moves: '相三进五 卒7进1 兵七进一 马8进7 马八进七 马2进3' },
   { name: '仙人指路对卒底炮', red: '仙人指路', black: '仙人指路对卒底炮', sharp: 2, moves: '兵七进一 炮2平3 炮二平五 象3进5 马二进三 马8进7' },
   { name: '对兵局', red: '仙人指路', black: '对兵局', sharp: 0, moves: '兵七进一 卒7进1 马八进七 马8进7 马二进三' },
-  { name: '起马对挺卒', red: '起马局', black: '起马对挺卒', sharp: 0, moves: '马八进七 卒7进1 兵七进一 马8进7 马二进三' },
-  { name: '过宫炮', red: '过宫炮', sharp: 1, moves: '炮二平六 马8进7 马二进三 车9平8 车一平二 卒7进1' },
+  { name: '起马对进7卒', red: '起马局', black: '起马对进7卒', sharp: 0, moves: '马八进七 卒7进1 兵七进一 马8进7 马二进三' },
+  { name: '过宫炮对进左马', red: '过宫炮', black: '过宫炮对进左马', sharp: 1, moves: '炮二平六 马8进7 马二进三 车9平8 车一平二 卒7进1' },
 ];
 
 /** A compiled line: the book line or its mirror image, as ICCS moves. */

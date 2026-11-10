@@ -220,14 +220,14 @@ function noteAI(side: Side, r: AiResult, done: Promise<boolean>) {
   lastAi = { side, move: sqName(r.from) + sqName(r.to), score: r.score, depth: r.depth, book: !!r.book, style, opening };
   let text = '';
   if (opening && !talk.named[side]) { talk.named[side] = true; text = opening; }
-  else if (!r.book) {
+  else if (!r.book && (r.depth >= 4 || Math.abs(r.score) > 29800)) { // a shallow verdict (a forced reply) says little
     const m = judge({ score: r.score, prev: talk.prev[side], given: sacrificed(engine), taken: taken(engine), since: ply - talk.ply }, talk.told[side]);
     if (m) { talk.told[side].add(m); text = line(m, style, r.score); }
     talk.prev[side] = r.score;
   }
   if (!text) return;
   talk.ply = ply;
-  void done.then((ok) => { if (ok && gen === generation && !rp && !reel && engine.history.length === ply) hud.remark(text, `${SIDE_NAME[side]} · ${STYLE_NAME[style]}`, side); });
+  void done.then((ok) => { if (ok && gen === generation && !rp && !reel && !over && engine.history.length === ply) hud.remark(text, `${SIDE_NAME[side]} · ${STYLE_NAME[style]}`, side); });
 }
 
 function sync() {

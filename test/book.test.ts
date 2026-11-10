@@ -57,10 +57,11 @@ assert.equal(openingName(['b2e2'], 'r'), '中炮');
 assert.equal(openingName(['h2e2', 'h9g7'], 'b'), '中炮对屏风马');
 assert.equal(openingName(['b2e2', 'b9c7'], 'b'), '中炮对屏风马');
 assert.equal(openingName(['h2e2', 'h7e7'], 'b'), '顺炮');
-assert.equal(openingName(['h2e2', 'b7e7'], 'b'), '列炮');
+assert.equal(openingName(['h2e2', 'b7e7'], 'b'), '中炮对列炮');
 assert.equal(openingName(['h2e2', 'b9c7'], 'b'), '中炮对反宫马');
 assert.equal(openingName(['c3c4', 'b7c7'], 'b'), '仙人指路对卒底炮');
-assert.equal(openingName(['h2d2', 'h9g7'], 'b'), null); // no settled name for black there
+assert.equal(openingName(['h2d2', 'h9g7'], 'b'), '过宫炮对进左马');
+assert.equal(openingName(['c3c4'], 'b'), null); // ambiguous: 卒底炮 or 对兵
 assert.equal(openingName(['h2e2', 'a6a5'], 'b'), null); // out of book
 
 // No book move gives anything away: after it, the engine's own depth-4 search scores the position

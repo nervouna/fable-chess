@@ -145,11 +145,13 @@ class Hud {
   cinematic(on: boolean) { this.root.classList.toggle('cine', on); }
 
   private remarkTimer = 0;
+  private cardUntil = 0;
   /** One line of commentary with a small byline, for a few seconds ('' hides it). */
   remark(text: string, by: string, side: Side) {
-    const c = $('remark');
+    const c = $('remark'), hold = this.cardUntil - performance.now();
     clearTimeout(this.remarkTimer); c.className = '';
     if (!text) return;
+    if (hold > 0) { this.remarkTimer = window.setTimeout(() => this.remark(text, by, side), hold); return; } // after the title card
     c.querySelector('.t')!.textContent = text; c.querySelector('.s')!.textContent = by;
     void c.offsetWidth;
     c.className = 'show ' + side;
@@ -222,7 +224,7 @@ class Hud {
     if (!life) return;
     c.querySelector('.t')!.textContent = text; c.querySelector('.s')!.textContent = sub;
     void c.offsetWidth;
-    c.style.animationDuration = life + 's';
+    c.style.animationDuration = life + 's'; this.cardUntil = performance.now() + life * 1000;
     c.className = 'show ' + side;
     this.cardTimer = window.setTimeout(() => { c.className = ''; }, life * 1000);
   }

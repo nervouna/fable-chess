@@ -4,8 +4,10 @@
 //            at most 64 legal moves, two otherwise. The FEN (only for a non-standard start) has its
 //            space written as `_`. About one character per ply, so a 100-ply game fits in ~105.
 //   readable ICCS coordinates (h2e2) numbered in pairs, with the traditional notation alongside.
-// Decoding accepts either (or a whole link) and replays every move through the rules engine.
+// Decoding accepts either (or a whole link), or a game in traditional notation alone (炮二平五 马8进7 …,
+// see notation.ts), and replays every move through the rules engine.
 import { Engine, START_FEN, idx, sq, sqName, type Piece, type Side, type Status } from './engine.ts';
+import { notationTokens, parseMove } from './notation.ts';
 
 export const RECORD_VERSION = '1';
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -99,7 +101,7 @@ export function decode(text: string): GameRecord {
   const h = t.indexOf('#g=');
   if (h >= 0) t = t.slice(h + 3).split(/\s/)[0];
   try { t = decodeURIComponent(t); } catch { /* not URI-encoded */ }
-  const compact = /\s/.test(t) ? null : /^(\d+)([.~])/.exec(t); // "1. h2e2 ..." is the readable form
+  const compact = /[\s\u0080-\uffff]/.test(t) ? null : /^(\d+)([.~])/.exec(t); // "1. h2e2" and "1.炮二平五" are readable
   if (compact) {
     if (compact[1] !== RECORD_VERSION) throw new RecordError(`Unsupported record version ${compact[1]}`);
     let body = t.slice(compact[0].length), fen = START_FEN;
@@ -120,11 +122,20 @@ export function decode(text: string): GameRecord {
       return { from: (all[i] / 90) | 0, to: all[i] % 90 };
     });
   }
-  // Readable form: an optional FEN line, then ICCS tokens; numbers and traditional notation are ignored.
-  const fl = /^\s*FEN:?\s*(.+)$/im.exec(t);
+  // Readable form: an optional FEN line (or a PGN [FEN "..."] tag), then ICCS tokens; numbers and
+  // traditional notation are ignored.
+  const fl = /\[FEN\s+"([^"]+)"\]/i.exec(t) ?? /^\s*FEN:?\s*(.+)$/im.exec(t);
   const fen = fl ? checkFen(fl[1]) : START_FEN;
   const body = fl ? t.replace(fl[0], '') : t;
   const tokens = body.match(/\b[a-i][0-9][-]?[a-i][0-9]\b/gi) ?? [];
+  // Without coordinates, read the traditional notation itself (a game copied from a book or a site).
+  const cn = tokens.length ? [] : notationTokens(body);
+  if (cn.length) {
+    let j = 0;
+    return replay(fen, () => j < cn.length, (e, n) => {
+      try { return parseMove(e, cn[j++]); } catch (err) { throw new RecordError(`Move ${n}: ${err instanceof Error ? err.message : err}`); }
+    });
+  }
   if (!tokens.length && !fl && !t.includes('棋谱')) throw new RecordError('No moves found in the record'); // an empty game needs its header
   let k = 0;
   return replay(fen, () => k < tokens.length, () => {

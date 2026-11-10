@@ -39,7 +39,7 @@
       </header>
 
       <aside class="panel moves">
-        <div class="hd"><button id="btn-replay" title="复盘 (P)">复盘</button><span>棋 谱</span><button id="btn-share" title="分享棋局">分享</button></div>
+        <div class="hd"><button id="btn-replay" title="复盘 (P)">复盘</button><button id="btn-classics" title="古谱名局 (K)">名局</button><span>棋 谱</span><button id="btn-share" title="分享棋局">分享</button></div>
         <ol id="moves"></ol>
       </aside>
 
@@ -83,6 +83,7 @@
           <button id="rp-play" title="播放 / 暂停 (空格)"><b>▶&#xFE0E;</b><span>播放</span></button>
           <button id="rp-next" title="下一步 (→)"><b>❯</b><span>下一步</span></button>
           <button id="rp-speed" title="播放速度"><b>1×</b><span>速度</span></button>
+          <button id="rp-classics" title="古谱名局 (K)"><b>局</b><span>名局</span></button>
           <button id="rp-share" title="分享棋局"><b>⇪</b><span>分享</span></button>
           <button id="rp-exit" title="退出复盘 (Esc)"><b>✕</b><span>退出</span></button>
         </div>
@@ -95,6 +96,14 @@
           <div class="row"><button id="share-link">复制链接</button><button id="share-text">复制棋谱</button><button id="share-close">关闭</button></div>
           <div class="row reel"><button id="share-reel" title="精彩片段 (L)">观看集锦</button><button id="share-export" title="录制集锦为视频">导出视频</button></div>
           <div class="note">打开链接即可复盘 · 也可将棋谱粘贴到页面中导入</div>
+        </div>
+      </div>
+      <div id="classics">
+        <div class="card">
+          <div class="hd">名 局</div>
+          <div class="note">明清古谱 · 选一局，自动演示</div>
+          <div id="cl-list"></div>
+          <div class="row"><button id="cl-close">关闭</button></div>
         </div>
       </div>
       <div id="reelcard"><span class="t"></span><span class="s"></span></div>

@@ -5,8 +5,8 @@
 <h1 align="center">楚漢爭鋒 · Chu–Han Contention</h1>
 
 <p align="center">
-  Xiangqi (Chinese chess) staged as a battle: real troops instead of discs, a river with fords and bridges instead of a board,<br>
-  and a capture cinematic for every pairing of attacker and victim.
+  Xiangqi (Chinese chess) staged as a battle.<br>
+  Real troops, a real river, and a cinematic for every capture.
 </p>
 
 <p align="center">

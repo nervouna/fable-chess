@@ -5,8 +5,10 @@ import { GLYPH } from './units';
 const $ = (id: string) => document.getElementById(id)!;
 
 export type Mode = 'pvp' | 'pve' | 'watch';
-export interface HudHandlers { reset(): void; undo(): void; restart(): void; mode(m: Mode): void; music(on: boolean): void; fine(on: boolean): void; autoCam(on: boolean): void; badges(on: boolean): void; sound(on: boolean): void; replay: ReplayHandlers }
+export interface HudHandlers { reset(): void; undo(): void; restart(): void; mode(m: Mode): void; music(on: boolean): void; fine(on: boolean): void; autoCam(on: boolean): void; badges(on: boolean): void; sound(on: boolean): void; replay: ReplayHandlers; reel: ReelHandlers }
 /** Replay controls. `share` returns the link and the readable record of the game on screen. */
+/** Highlight reel: play it, play and record it, leave it (which also cancels a recording). */
+export interface ReelHandlers { start(): void; export(): void; exit(): void }
 export interface ReplayHandlers { enter(): void; prev(): void; next(): void; toggle(): void; speed(): void; seek(ply: number): void; exit(): void; share(): { link: string; text: string } }
 
 class Hud {
@@ -34,10 +36,25 @@ class Hud {
     $('share').onclick = (e) => { if (e.target === $('share')) this.closeShare(); };
     $('share-link').onclick = () => void this.copy(this.shared.link, '链接已复制');
     $('share-text').onclick = () => void this.copy(this.shared.text, '棋谱已复制');
+    const rl = h.reel;
+    $('over-reel').onclick = rl.start; $('share-reel').onclick = rl.start; $('share-export').onclick = rl.export;
+    $('rl-export').onclick = rl.export; $('rl-exit').onclick = rl.exit;
+    $('video-close').onclick = () => this.closeVideo();
+    $('video').onclick = (e) => { if (e.target === $('video')) this.closeVideo(); };
+    $('video-share').onclick = () => { // synchronously inside the click: share sheets need the gesture
+      if (this.videoFile) navigator.share({ files: [this.videoFile], title: '楚漢爭鋒 · 集锦' }).catch(() => {});
+    };
     window.addEventListener('keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if ((e.target as HTMLElement).id === 'share-url' && k !== 'escape') return; // the scrubber is exempt: its keys are ours
+      if (k === 'escape' && this.videoOpen) { this.closeVideo(); return; }
+      if (this.reeling) {
+        // The reel owns the keyboard: Esc leaves it, nothing else may move the board underneath.
+        if (k === 'escape') rl.exit();
+        if (k === ' ' || k.startsWith('arrow')) e.preventDefault();
+        return;
+      }
       if (this.replaying) {
         // Replay keys take over the arrows, space and escape; the rest keep their meaning.
         if (k === 'arrowleft') { r.prev(); e.preventDefault(); return; }
@@ -47,6 +64,7 @@ class Hud {
       }
       if (k === 'escape' && this.shareOpen) this.closeShare();
       else if (k === 'p') r.enter();
+      else if (k === 'l') rl.start();
       else if (k === 'r' || k === ' ') { h.reset(); e.preventDefault(); }
       else if (k === 'z') h.undo();
       else if (k === 'n') h.restart();
@@ -163,6 +181,60 @@ class Hud {
     this.toast(ok ? done : '复制失败，请手动复制');
     if (!ok) ($('share-url') as HTMLInputElement).select();
   }
+  // ---------- highlight reel ----------
+  private reeling = false;
+  private cardTimer = 0;
+  private videoOpen = false;
+  private videoFile: File | null = null;
+  /** Object URL of the last exported video (revoked when replaced or closed). */
+  videoUrl = '';
+  /** Show or hide the reel bar; `exporting` turns it into progress and a cancel button. */
+  reel(on: boolean, exporting: boolean) {
+    this.reeling = on;
+    this.root.classList.toggle('reel', on); this.root.classList.toggle('exporting', on && exporting);
+    $('rl-exit').querySelector('span')!.textContent = exporting ? '取消' : '退出';
+    $('rl-exit').title = exporting ? '取消导出 (Esc)' : '退出集锦 (Esc)';
+    if (on) this.closeShare();
+  }
+  /** Clip `i` of `n` (n: the end), its reason, and overall progress 0..1. */
+  reelState(i: number, n: number, reason: string, progress: number) {
+    const no = (k: number) => '一二三四五六七八九十'[k] ?? String(k + 1);
+    const ex = this.root.classList.contains('exporting');
+    $('rl-text').textContent = (ex ? '导出中 · ' : '集锦 · ') + (i < n ? `其${no(i)} / ${no(n - 1)}${reason ? ' · ' + reason : ''}` : reason || '终局') + (ex ? ` · ${Math.round(progress * 100)}%` : '');
+    $('rl-fill').style.width = Math.round(progress * 100) + '%';
+  }
+  /** Title card over the board for `life` seconds (0 hides it). */
+  reelCard(text: string, sub: string, side: Side | 'd', life: number) {
+    const c = $('reelcard');
+    clearTimeout(this.cardTimer); c.className = '';
+    if (!life) return;
+    c.querySelector('.t')!.textContent = text; c.querySelector('.s')!.textContent = sub;
+    void c.offsetWidth;
+    c.style.animationDuration = life + 's';
+    c.className = 'show ' + side;
+    this.cardTimer = window.setTimeout(() => { c.className = ''; }, life * 1000);
+  }
+  /** Offer an exported video: a download link, and the share sheet where files can be shared. */
+  offerVideo(blob: Blob, mime: string, ms: number) {
+    if (this.videoUrl) URL.revokeObjectURL(this.videoUrl);
+    const ext = mime.includes('mp4') ? 'mp4' : 'webm', name = `楚漢爭鋒-集锦.${ext}`;
+    this.videoUrl = URL.createObjectURL(blob);
+    const a = $('video-dl') as HTMLAnchorElement;
+    a.href = this.videoUrl; a.download = name;
+    const file = new File([blob], name, { type: mime });
+    let share = false;
+    try { share = !!navigator.canShare?.({ files: [file] }); } catch { /* not shareable */ }
+    this.videoFile = share ? file : null;
+    $('video-share').style.display = share ? '' : 'none';
+    $('video-note').textContent = `${ext.toUpperCase()} · ${Math.round(ms / 1000)} 秒 · ${(blob.size / 1048576).toFixed(1)} MB`;
+    this.videoOpen = true; $('video').className = 'show';
+  }
+  closeVideo() {
+    if (!this.videoOpen) return;
+    this.videoOpen = false; $('video').className = ''; this.videoFile = null;
+    if (this.videoUrl) { URL.revokeObjectURL(this.videoUrl); this.videoUrl = ''; ($('video-dl') as HTMLAnchorElement).removeAttribute('href'); }
+  }
+
   toast(text: string) {
     const t = $('toast');
     t.textContent = text; t.className = 'show';

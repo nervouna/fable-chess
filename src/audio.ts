@@ -7,6 +7,8 @@ class Sfx {
   private wet!: GainNode;
   private noiseBuf!: AudioBuffer;
   private rainGain: GainNode | null = null;
+  private comp!: DynamicsCompressorNode;
+  private tap: MediaStreamAudioDestinationNode | null = null;
   muted = false;
 
   /** Must be called from a user gesture to unlock audio. */
@@ -15,7 +17,7 @@ class Sfx {
       try { this.ctx = new AudioContext(); } catch { return; }
       const c = this.ctx;
       this.master = c.createGain(); this.master.gain.value = this.muted ? 0 : 0.8;
-      const comp = c.createDynamicsCompressor();
+      const comp = this.comp = c.createDynamicsCompressor();
       this.master.connect(comp); comp.connect(c.destination);
       // Cheap synthetic reverb for a sense of open space.
       const len = c.sampleRate * 1.8, ir = c.createBuffer(2, len, c.sampleRate);
@@ -35,6 +37,15 @@ class Sfx {
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
+
+  /** The final mix as a stream (for recording), alongside the speakers. Null while audio is not running. */
+  capture(): MediaStream | null {
+    if (!this.ctx || this.ctx.state !== 'running') return null;
+    if (!this.tap) { this.tap = this.ctx.createMediaStreamDestination(); this.comp.connect(this.tap); }
+    return this.tap.stream;
+  }
+  /** Disconnect the recording tap. */
+  release() { if (this.tap) { this.comp.disconnect(this.tap); this.tap = null; } }
 
   setMuted(m: boolean) { this.muted = m; if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.05); }
 

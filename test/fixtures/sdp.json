@@ -1,0 +1,22 @@
+[
+  {
+    "note": "Chromium offer (browser pane), mDNS host + srflx; public address replaced by 203.0.113.7",
+    "type": "offer",
+    "sdp": "v=0\r\no=- 6152016798982930606 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\nm=application 56160 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 203.0.113.7\r\na=candidate:1145297116 1 udp 2113937151 b57da041-b057-420d-8a0d-a9e2a9d1ff98.local 55144 typ host generation 0 network-cost 999\r\na=candidate:389611548 1 udp 1677729535 203.0.113.7 56160 typ srflx raddr 0.0.0.0 rport 0 generation 0 network-cost 999\r\na=ice-ufrag:GyLa\r\na=ice-pwd:cEFj+TCmpRMh9z/MdlJFEP/s\r\na=ice-options:trickle\r\na=fingerprint:sha-256 C4:DB:63:FB:EC:A9:FD:93:BB:40:A4:73:C0:38:BC:D0:36:76:03:1A:2F:A5:3A:50:79:F2:39:B8:6A:AD:28:0A\r\na=setup:actpass\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n"
+  },
+  {
+    "note": "Chromium answer to it",
+    "type": "answer",
+    "sdp": "v=0\r\no=- 6460733368604868666 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=msid-semantic: WMS\r\nm=application 46338 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 203.0.113.7\r\na=candidate:1070358910 1 udp 2113937151 86e4b2b8-6a8a-494f-81d6-65a6d40dc04d.local 57047 typ host generation 0 network-cost 999\r\na=candidate:2767968534 1 udp 1677729535 203.0.113.7 46338 typ srflx raddr 0.0.0.0 rport 0 generation 0 network-cost 999\r\na=ice-ufrag:uQDp\r\na=ice-pwd:TpkpjNeRiq2YgNzas61Bu4MK\r\na=ice-options:trickle\r\na=fingerprint:sha-256 3D:EF:27:C7:F0:A1:36:1B:E8:85:92:9B:77:61:99:20:74:6F:06:08:FB:1E:EF:8C:2B:1B:CC:76:42:5B:E9:E4\r\na=setup:active\r\na=mid:0\r\na=sctp-port:5000\r\n"
+  },
+  {
+    "note": "Chromium offer from a second capture (same machine, one page)",
+    "type": "offer",
+    "sdp": "v=0\r\no=- 8759252033861097164 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\nm=application 45000 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 203.0.113.7\r\na=candidate:233372973 1 udp 2113937151 04bd81d9-509e-4bba-9959-e194efa39477.local 53505 typ host generation 0 network-cost 999\r\na=candidate:1310335999 1 udp 1677729535 203.0.113.7 45000 typ srflx raddr 0.0.0.0 rport 0 generation 0 network-cost 999\r\na=ice-ufrag:nRjw\r\na=ice-pwd:fRUFEMmQTvydGNJqh1iDuC5e\r\na=ice-options:trickle\r\na=fingerprint:sha-256 04:45:E9:7C:FF:99:13:42:43:B3:F5:C5:00:FB:48:98:0F:95:66:2E:7B:66:D3:26:02:92:7F:52:0F:51:59:5C\r\na=setup:actpass\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n"
+  },
+  {
+    "note": "Chromium answer to it",
+    "type": "answer",
+    "sdp": "v=0\r\no=- 1101354653323971980 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\nm=application 46508 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 203.0.113.7\r\na=candidate:4243930447 1 udp 2113937151 04bd81d9-509e-4bba-9959-e194efa39477.local 56336 typ host generation 0 network-cost 999\r\na=candidate:1740801319 1 udp 1677729535 203.0.113.7 46508 typ srflx raddr 0.0.0.0 rport 0 generation 0 network-cost 999\r\na=ice-ufrag:04VV\r\na=ice-pwd:iApi5RLKnatUOf02wTm4IeFS\r\na=ice-options:trickle\r\na=fingerprint:sha-256 DE:F4:EE:73:50:C5:E7:92:45:D8:8A:E8:31:EF:90:CE:34:C1:BF:83:4D:C6:56:8E:45:EE:34:30:3C:87:F0:06\r\na=setup:active\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n"
+  }
+]

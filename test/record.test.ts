@@ -35,10 +35,24 @@ function randomGame(plies: number, seed: number, fen = START_FEN) {
   assert.deepEqual(decode(code).moves.map((m) => sqName(m.from) + sqName(m.to)).join(' '), 'h2e2 h9g7 e2e6 a9a8 h0g2 b7b0 a0a1');
 }
 
-// Empty game.
+// Empty game, and the readable form with move numbers but no header.
 {
   assert.equal(encode(new Engine()), '1.');
   assert.equal(decode('1.').moves.length, 0);
+  assert.equal(decode(toText(new Engine())).moves.length, 0);
+  assert.equal(decode('1. h2e2 h9g7\n2. h0g2').moves.length, 3);
+}
+
+// Positions with more than 64 legal moves take two characters per ply.
+{
+  const fen = '4k4/9/P1P1P1P1P/9/1R5R1/9/2C1N1C2/9/4N4/3AKA3 w', e = new Engine(fen);
+  assert.ok(e.legalMoves().length > 64);
+  let s = 9;
+  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x80000000);
+  for (let i = 0; i < 12 && !e.status().over; i++) { const all = e.legalMoves(); const m = all[(rnd() * all.length) | 0]; e.move(m.from, m.to); }
+  const code = encode(e);
+  assert.ok(code.length > code.indexOf('.') + 1 + e.history.length, 'some plies used two characters');
+  same(e, decode(code).engine);
 }
 
 // Long games stay short enough for a URL and survive the round trip.
@@ -89,6 +103,10 @@ for (const seed of [1, 7, 42, 2024]) {
   bad('1~3k5/9/9/9/9/9/9/R7/1R7/4K4_w.', /rank 8 has 8 files/);
   bad('1~3k5/9/9/9/9/9/9/R8/1R7/4K4_w', /no move list/);
   bad('hello world', /No moves found/);
+  bad('你好', /No moves found/);
+  bad('123', /No moves found/);
+  bad('https://example.org/#g=', /No moves found/);
+  bad('#g=5', /No moves found/);
   assert.equal(checkFen('rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r'), START_FEN);
 }
 

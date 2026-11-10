@@ -99,7 +99,7 @@ export function decode(text: string): GameRecord {
   const h = t.indexOf('#g=');
   if (h >= 0) t = t.slice(h + 3).split(/\s/)[0];
   try { t = decodeURIComponent(t); } catch { /* not URI-encoded */ }
-  const compact = /^(\d+)([.~])/.exec(t);
+  const compact = /\s/.test(t) ? null : /^(\d+)([.~])/.exec(t); // "1. h2e2 ..." is the readable form
   if (compact) {
     if (compact[1] !== RECORD_VERSION) throw new RecordError(`Unsupported record version ${compact[1]}`);
     let body = t.slice(compact[0].length), fen = START_FEN;
@@ -125,7 +125,7 @@ export function decode(text: string): GameRecord {
   const fen = fl ? checkFen(fl[1]) : START_FEN;
   const body = fl ? t.replace(fl[0], '') : t;
   const tokens = body.match(/\b[a-i][0-9][-]?[a-i][0-9]\b/gi) ?? [];
-  if (!tokens.length && /[^\s\d.:]/.test(body.replace(/[^\x00-\x7f]/g, ''))) throw new RecordError('No moves found in the record');
+  if (!tokens.length && !fl && !t.includes('棋谱')) throw new RecordError('No moves found in the record'); // an empty game needs its header
   let k = 0;
   return replay(fen, () => k < tokens.length, () => {
     const s = tokens[k++].toLowerCase().replace('-', '');

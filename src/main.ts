@@ -364,7 +364,9 @@ function enterReplay(text?: string): boolean {
     rp = { ...rec, back, playing: false, speed: rp?.speed ?? 1, token: 0 };
     aiEpoch++; thinking = false; clock.userScale = rp.speed; rig.director = mode === 'watch';
     hud.closeShare(); hud.replay(true);
-    seekNow(0);
+    // A link starts at the beginning; the game on screen opens where it stands, so a look back and
+    // straight out again leaves its battlefield untouched.
+    seekNow(text === undefined ? rec.moves.length : 0);
   });
   return true;
 }

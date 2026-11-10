@@ -188,6 +188,7 @@ html, body {
   #replay button { flex-direction: column; gap: 1px; min-width: 44px; min-height: 44px; padding: 3px 2px; font-size: 11px; }
   #replay button b { font-size: 16px; line-height: 1.1; }
   #rp-ply { min-width: 52px; font-size: 12px; }
+  #rp-range { height: 44px; } .moves .hd button { min-height: 44px; min-width: 44px; }
   #intro .sub { font-size: 15px; letter-spacing: 0.6em; margin-right: -0.6em; }
   #duel { left: calc(5vw + var(--sa-l)); }
 }

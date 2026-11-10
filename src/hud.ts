@@ -29,6 +29,7 @@ class Hud {
     $('rp-prev').onclick = r.prev; $('rp-next').onclick = r.next; $('rp-play').onclick = r.toggle; $('rp-speed').onclick = r.speed; $('rp-exit').onclick = r.exit;
     const range = $('rp-range') as HTMLInputElement;
     range.oninput = () => r.seek(+range.value);
+    range.onchange = () => range.blur();
     $('share-close').onclick = () => this.closeShare();
     $('share').onclick = (e) => { if (e.target === $('share')) this.closeShare(); };
     $('share-link').onclick = () => void this.copy(this.shared.link, '链接已复制');
@@ -36,7 +37,7 @@ class Hud {
     window.addEventListener('keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if ((e.target as HTMLElement).tagName === 'INPUT' && k !== 'escape') return;
+      if ((e.target as HTMLElement).id === 'share-url' && k !== 'escape') return; // the scrubber is exempt: its keys are ours
       if (this.replaying) {
         // Replay keys take over the arrows, space and escape; the rest keep their meaning.
         if (k === 'arrowleft') { r.prev(); e.preventDefault(); return; }

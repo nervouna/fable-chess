@@ -1,7 +1,7 @@
 // Procedural low-poly models for the seven unit types, plus the Unit wrapper used by the game.
 import * as THREE from 'three';
 import type { Piece, PType, Side } from './engine';
-import { disposeTree, groundHeight, rand, sqPos } from './core';
+import { disposeTree, groundHeight, rand, sqPos, WADE, wadeY } from './core';
 import { fx } from './fx';
 import { box, clothMat, cone, cyl, glyphTexture, group, mesh, sph, std, TEAM } from './kit';
 import { dropModels, instantiate, model, useModels } from './models';
@@ -519,7 +519,10 @@ export class Unit {
     this.root.rotation.set(0, this.homeYaw, 0);
   }
 
-  setXZ(x: number, z: number) { this.root.position.set(x, groundHeight(x, z), z); }
+  /** Stand at (x, z): on the ground, or (`wade`, the default) down in the water when fording the river. */
+  setXZ(x: number, z: number, wade = true) { this.root.position.set(x, wade ? wadeY(x, z, WADE[this.piece.type].draft) : groundHeight(x, z), z); }
+  /** Splash bookkeeping while it fords (see river.wade). */
+  water = { wet: false, last: -9 };
 
   /** World position of a part (e.g. weapon tip, muzzle). */
   partPos(o: THREE.Object3D, out = new THREE.Vector3()) { return o.getWorldPosition(out); }

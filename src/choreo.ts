@@ -2,12 +2,13 @@
 // Attack is keyed by attacker type and victim class, brace and death by the victim's type.
 import * as THREE from 'three';
 import type { PType } from './engine';
-import { angDiff, ease, groundHeight, inWater, lerp, rand, randS, tween, wait } from './core';
+import { angDiff, ease, fordDepth, groundHeight, inWater, lerp, rand, randS, tween, wait, WADE, WATER_Y } from './core';
 import { fx } from './fx';
 import { TEAM } from './kit';
 import { sfx } from './audio';
 import { rig } from './camera';
 import { scars } from './scars';
+import { clearOfBridges, river } from './river';
 import type { Unit } from './units';
 
 export type HitKind = 'blade' | 'ram' | 'blast' | 'toss' | 'crush';
@@ -27,20 +28,35 @@ function turn(u: Unit, yaw: number, dur = 0.16) {
 }
 const faceTo = (u: Unit, p: THREE.Vector3, dur?: number) => turn(u, yawOf(p.x - u.root.position.x, p.z - u.root.position.z), dur);
 
-let lastSplash = 0;
+/**
+ * Wading slows a unit down: re-time a straight path so it covers the water at (1 - slow) of its speed.
+ * Returns how much longer the move takes and the map from eased time to share of the distance.
+ */
+function wadeWarp(u: Unit, x0: number, z0: number, x1: number, z1: number) {
+  const N = 40, slow = WADE[u.piece.type].slow, cost = [0];
+  for (let i = 1; i <= N; i++) { const k = (i - 0.5) / N; cost.push(cost[i - 1] + 1 / (1 - slow * fordDepth(lerp(x0, x1, k), lerp(z0, z1, k)))); }
+  const total = cost[N];
+  if (total < N * 1.001) return null;
+  return {
+    stretch: total / N,
+    at(tau: number) {
+      const c = tau * total;
+      let j = 0; while (j < N - 1 && cost[j + 1] < c) j++;
+      return (j + (c - cost[j]) / (cost[j + 1] - cost[j])) / N;
+    },
+  };
+}
+
 /** Move the unit along the ground. onStep gets eased progress and the distance covered this frame. */
 function travel(u: Unit, to: THREE.Vector3, dur: number, e = ease.lin, onStep?: (k: number, d: number) => void) {
-  const x0 = u.root.position.x, z0 = u.root.position.z;
+  const x0 = u.root.position.x, z0 = u.root.position.z, warp = wadeWarp(u, x0, z0, to.x, to.z), w = WADE[u.piece.type].weight;
   let px = x0, pz = z0;
-  return tween(dur, (t) => {
-    const k = e(t), x = lerp(x0, to.x, k), z = lerp(z0, to.z, k);
+  return tween(dur * (warp?.stretch ?? 1), (t) => {
+    const k = warp ? warp.at(e(t)) : e(t), x = lerp(x0, to.x, k), z = lerp(z0, to.z, k);
     u.setXZ(x, z);
     const d = Math.hypot(x - px, z - pz); px = x; pz = z;
-    if (inWater(x, z) && u.body.position.y < 0.3 && d > 0.001) {
-      if (Math.random() < 0.6) fx.splash(u.root.position, 3, 0.8);
-      if (performance.now() - lastSplash > 220) { lastSplash = performance.now(); sfx.splash(); }
-    }
     onStep?.(k, d);
+    if (u.body.position.y < 0.3) river.wade(u.water, u.root.position, w, d);
   });
 }
 
@@ -48,7 +64,7 @@ function travel(u: Unit, to: THREE.Vector3, dur: number, e = ease.lin, onStep?: 
 function hop(u: Unit, to: THREE.Vector3, height: number, dur: number, onStep?: (t: number) => void) {
   const x0 = u.root.position.x, z0 = u.root.position.z;
   return tween(dur, (t) => {
-    u.setXZ(lerp(x0, to.x, t), lerp(z0, to.z, t));
+    u.setXZ(lerp(x0, to.x, t), lerp(z0, to.z, t), false); // airborne: the arc clears the water
     u.body.position.y = 4 * height * t * (1 - t);
     onStep?.(t);
   }).then(() => { u.body.position.y = 0; });
@@ -139,10 +155,18 @@ const MOVE: Record<PType, MoveFn> = {
     const beat = beats(4, () => { sfx.stomp(0.7); rig.shake(0.2); fx.dust(u.root.position, 9, 1.3); scars.mark('foot', u.root.position, 1.5, 0.3, dir); });
     await travel(u, to, 1.15, ease.lin, (k) => { elephantPose(p, k * 4 * Math.PI, 0.42); beat(k); });
   },
-  // Horse: gather and vault in a single arc.
+  // Horse: gather and vault in a single arc (or, across the river clear of the bridges, charge through the ford).
   async N(u, to) {
     await faceTo(u, to, 0.14);
-    const p = u.parts;
+    const p = u.parts, o = u.root.position;
+    if (Math.sign(o.z) !== Math.sign(to.z) && clearOfBridges(o.x, o.z, to.x, to.z)) {
+      sfx.neigh();
+      const beat = beats(6, () => { sfx.hoof(); if (!inWater(u.root.position.x, u.root.position.z)) fx.dust(u.root.position, 4, 0.9); });
+      await travel(u, to, 0.9, ease.io2, (k) => { gallopPose(p, k * 6 * Math.PI, 0.75); p.rider.torso.rotation.x = 0.2 * Math.sin(Math.PI * k); beat(k); });
+      sfx.hoof(); fx.dust(u.root.position, 8, 1);
+      await tween(0.2, (t) => { p.hb.rotation.x = -0.25 * Math.sin(Math.PI * t); });
+      return;
+    }
     await tween(0.14, (t) => { p.hb.position.y = 0.98 - 0.1 * t; p.hb.rotation.x = 0.12 * t; });
     sfx.neigh(); sfx.whoosh();
     fx.dust(u.root.position, 6, 0.9);
@@ -777,7 +801,8 @@ function shove(v: Unit, dir: THREE.Vector3, dist: number, dur: number, height = 
   const x0 = v.root.position.x, z0 = v.root.position.z;
   return tween(dur, (t) => {
     const k = ease.out2(t), x = x0 + dir.x * dist * k, z = z0 + dir.z * dist * k;
-    v.root.position.set(x, Math.max(groundHeight(x, z), -0.1) + 4 * height * t * (1 - t), z);
+    const floor = river.isWater(x, z) ? WATER_Y - 0.35 : Math.max(groundHeight(x, z), -0.1); // a body in the river sinks to the waist
+    v.root.position.set(x, floor + 4 * height * t * (1 - t), z);
   });
 }
 /** Throw the unit through the air, tumbling `spins` times, trailing light. */
@@ -794,6 +819,7 @@ function launch(v: Unit, dir: THREE.Vector3, dist: number, height: number, dur: 
 /** The body hits the ground: dust, flying paving, a shock ring, a cracked floor. */
 function slam(v: Unit, power: number) {
   const p = v.root.position;
+  if (river.isWater(p.x, p.z)) { river.splash(p, 0.7 + 0.5 * power); rig.shake(0.25 * power); return; } // into the river
   power > 1.2 ? sfx.stomp(power) : sfx.thud(); rig.shake(0.35 * power);
   fx.dust(p, 14 * power, 1 + 0.5 * power); fx.rubble(p, Math.round(5 * power), power);
   fx.shockwave(p, glowOf(v), 2.6 * power, 0.55); fx.shockwave(p, 0xffffff, 1.6 * power, 0.4);
@@ -865,7 +891,8 @@ const DEATH: Record<PType, DeathFn> = {
     slam(v, 2.2); rig.shake(0.6);
     scars.mark('crack', v.root.position, 4.2, 0.6); scars.mark('stain', v.root.position, 2.8, 0.55);
     for (let i = 1; i < 3; i++) void wait(i * 0.16).then(() => { fx.shockwave(v.root.position, 0xd0c0a0, 4 + i * 2, 0.8); fx.dust(v.root.position, 16, 2.4); });
-    await tween(0.3, (t) => { v.root.position.y = 0.35 * Math.sin(Math.PI * t); }); // the ground throws it back up once
+    const y0 = v.root.position.y;
+    await tween(0.3, (t) => { v.root.position.y = y0 + 0.35 * Math.sin(Math.PI * t); }); // the ground throws it back up once
     sfx.stomp(1); fx.dust(v.root.position, 20, 1.8); fx.rubble(v.root.position, 6, 1.2);
     await wait(0.35);
     await vanish(v, 150, 1.2);

@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import { Engine, START_FEN, sq, sqName, type Side, type Status } from './engine';
 import type { Mode } from './hud';
-import { clock, colX, ease, groundHeight, lerp, rowZ, slowmo, sqPos, tick, tween, wait } from './core';
+import { clock, colX, ease, lerp, rowZ, slowmo, sqPos, tick, tween, wait, WADE, WATER_Y } from './core';
 import { fx } from './fx';
 import { TEAM, timeU } from './kit';
 import { World } from './world';
@@ -18,6 +18,7 @@ import { sfx } from './audio';
 import { hud } from './hud';
 import { DUEL, playAttack, playBrace, playDeath, playMove } from './choreo';
 import { scars } from './scars';
+import { river } from './river';
 import { encode, hashKey, STYLES, type AiRequest, type AiResult, type Style } from './ai';
 import { bookMoves, openingName } from './book';
 import { SIDE_NAME, STYLE_NAME, judge, line, sacrificed, taken, type Moment } from './commentary';
@@ -47,6 +48,7 @@ scars.init(scene);
 rig.init(canvas);
 world.cam = rig.cam;
 world.onThunder = (d) => sfx.thunder(d);
+river.waders = function* () { for (const u of units.values()) yield { x: u.root.position.x, z: u.root.position.z, r: WADE[u.piece.type].r, s: 1 }; };
 
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: quality.s.msaa }));
 composer.addPass(new RenderPass(scene, rig.cam));
@@ -380,7 +382,7 @@ function resetState() {
   over = engine.status().over; busy = false; post.desat = 0; post.tilt = 0;
   rig.cineEnd(); cinematic(false); hud.hideOver(); hud.duelHide(); burn.duel = burn.banner = null;
   grade.uniforms.uImpact.value = 0;
-  scars.rewind(engine.history.length);
+  scars.rewind(engine.history.length); river.clear();
   thinking = false; lastAi = null; talk = fresh(); hud.remark('', '', 'r');
   select(-1); sync();
   if (opts.autoCam && mode === 'pvp' && !rp) rig.faceSide(engine.turn);
@@ -745,7 +747,7 @@ function step(realDt: number) {
     u.ring.material.opacity = sel || tgt ? 1 : chk ? 0.6 + 0.4 * Math.sin(t * 9) : 0.42;
     u.ring.material.color.set(chk || tgt ? 0xff2010 : TEAM[u.piece.side].glow);
     u.ring.scale.setScalar(sel ? 1.12 + 0.06 * Math.sin(t * 6) : tgt ? 1.25 + 0.1 * Math.sin(t * 8) : chk ? 1.2 : 1);
-    u.ring.position.y = 0.035 + Math.max(0, -0.16 - groundHeight(u.root.position.x, u.root.position.z));
+    u.ring.position.y = 0.035 + Math.max(0, WATER_Y + 0.04 - u.root.position.y); // floats on the water while fording
   }
   const pulse = 0.5 + 0.5 * Math.sin(t * 5);
   for (const m of targets) {

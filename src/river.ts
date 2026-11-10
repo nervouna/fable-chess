@@ -124,9 +124,9 @@ void main(){
   // Glints are sub-texel sparkles: fade them where a cell shrinks below a pixel, or the far river turns to static.
   float px=length(fwidth(p)), near=smoothstep(0.16,0.04,px);
   vec2 gc=floor(p*vec2(5.0,8.0)+vec2(t*1.2,0.0));
-  float glint=step(0.975-0.015*noon,hash(gc+floor(t*6.0)))*pow(sr,40.0)*(0.3+1.7*noon);
+  float glint=step(0.975-0.015*noon,hash(gc+floor(t*6.0)))*pow(sr,160.0)*(0.3+1.7*noon);
 #ifdef HQ
-  glint+=step(0.99,hash(floor(p*vec2(12.0,17.0))+floor(t*9.0)))*pow(sr,60.0)*(0.4+1.6*noon);
+  glint+=step(0.99,hash(floor(p*vec2(12.0,17.0))+floor(t*9.0)))*pow(sr,220.0)*(0.4+1.6*noon);
 #endif
   glint*=near;
   col+=uSunCol*glint*sun*3.0;

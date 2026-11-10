@@ -354,6 +354,7 @@ rig.onHover = (ndc) => {
   hoverRing.visible = !!can && i !== selected;
   if (can) { sqPos(i, hoverRing.position); hoverRing.position.y = Math.max(hoverRing.position.y, -0.18) + 0.06; }
 };
+rig.onDoubleTap = () => rig.reset(engine.turn);
 window.addEventListener('keydown', () => sfx.unlock(), { once: true });
 window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 

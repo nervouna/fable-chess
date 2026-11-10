@@ -19,39 +19,56 @@ class CameraRig {
   private dragging = false;
   private focusLeft = 0;
   private track: THREE.Vector3 | null = null;
+  private fit = { user: 1, cine: 1 }; // distance multipliers that keep narrow (portrait) frames wide enough
+  private defPitch = DEF_PITCH;
   private hold = 0; // seconds the director leaves zoom and tilt alone after the user adjusts them
   /** Spectator mode: the camera drifts around the battlefield on its own. */
   director = false;
   private t = 0;
   onClick: (ndc: THREE.Vector2) => void = () => {};
   onHover: (ndc: THREE.Vector2) => void = () => {};
+  /** Touch double tap (the first tap has already gone to onClick). */
+  onDoubleTap: () => void = () => {};
   get cinematic() { return !!this.cine; }
   /** Point the camera is currently looking at. */
   get focusPoint() { return this.cur.target; }
 
   init(dom: HTMLElement) {
     const pts = new Map<number, { x: number; y: number }>();
-    let downX = 0, downY = 0, moved = 0, button = 0, pinch = 0;
+    let downX = 0, downY = 0, moved = 0, button = 0, touch = false;
+    // Touch: once a second finger lands the gesture can no longer end in a tap. `two` is the last
+    // two-finger frame (spread, angle, centroid y), re-seeded whenever the finger count changes.
+    let multi = false, two: { d: number; a: number; y: number } | null = null, lastTap = { t: -1e9, x: 0, y: 0 };
+    const slop = () => (touch ? 12 : 5);
     const ndc = (e: PointerEvent) => { const r = dom.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); };
+    const pair = () => {
+      const [a, b] = [...pts.values()];
+      return { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), a: Math.atan2(b.y - a.y, b.x - a.x), y: (a.y + b.y) / 2 };
+    };
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
     dom.addEventListener('pointerdown', (e) => {
-      dom.setPointerCapture(e.pointerId); this.dragging = true; this.hold = 12;
+      try { dom.setPointerCapture(e.pointerId); } catch { /* synthetic or already-gone pointer */ }
+      this.dragging = true; this.hold = 12;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 1) { downX = e.clientX; downY = e.clientY; moved = 0; button = e.button; }
-      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); moved = 99; }
+      if (pts.size === 1) { downX = e.clientX; downY = e.clientY; moved = 0; button = e.button; touch = e.pointerType === 'touch'; multi = false; }
+      if (pts.size >= 2) { multi = true; two = pair(); }
     });
     dom.addEventListener('pointermove', (e) => {
       const p = pts.get(e.pointerId);
-      if (!p) { this.onHover(ndc(e)); return; }
+      if (!p) { if (e.pointerType !== 'touch') this.onHover(ndc(e)); return; }
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       p.x = e.clientX; p.y = e.clientY;
-      if (pts.size === 2) {
-        const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (pinch > 0) this.user.dist = clamp(this.user.dist * (pinch / d), MIN_DIST, MAX_DIST);
-        pinch = d; return;
+      if (pts.size >= 2) {
+        // Pinch zooms, twist turns the board, a shared vertical drag tilts.
+        const n = pair(), o = two ?? n;
+        this.user.dist = clamp(this.user.dist * (o.d / n.d), MIN_DIST, MAX_DIST);
+        this.user.yaw += angDiff(o.a, n.a); // the board turns with the fingers
+        this.user.pitch = clamp(this.user.pitch + (n.y - o.y) * 0.005, MIN_PITCH, MAX_PITCH);
+        two = n; return;
       }
+      if (multi) return; // the finger left over from a pinch: wait for it to lift
       moved = Math.max(moved, Math.hypot(e.clientX - downX, e.clientY - downY));
-      if (moved < 5) return;
+      if (moved < slop()) return;
       if (button === 2 || e.shiftKey) { // pan on the ground plane
         const k = this.user.dist * 0.0016, c = Math.cos(this.user.yaw), s = Math.sin(this.user.yaw);
         this.user.target.x = clamp(this.user.target.x - (dx * c + dy * s) * k, -12, 12);
@@ -64,7 +81,15 @@ class CameraRig {
     const up = (e: PointerEvent) => {
       if (!pts.delete(e.pointerId)) return;
       this.dragging = pts.size > 0;
-      if (pts.size === 0 && moved < 5 && button === 0 && e.type === 'pointerup') this.onClick(ndc(e));
+      two = pts.size >= 2 ? pair() : null;
+      if (pts.size > 0 || multi || moved >= slop() || button !== 0 || e.type !== 'pointerup') return;
+      if (touch) {
+        // A second quick tap on the same spot resets the view instead of clicking again.
+        const now = performance.now();
+        if (now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 20) { lastTap.t = -1e9; this.onDoubleTap(); return; }
+        lastTap = { t: now, x: e.clientX, y: e.clientY };
+      }
+      this.onClick(ndc(e));
     };
     dom.addEventListener('pointerup', up);
     dom.addEventListener('pointercancel', up);
@@ -76,17 +101,24 @@ class CameraRig {
 
   setAspect(a: number) {
     this.cam.aspect = a;
-    // Keep the whole board in frame on narrow windows.
-    this.cam.fov = a < 1.25 ? clamp(40 * (1.25 / a), 40, 75) : 40;
+    // Narrow (portrait) windows: widen the lens up to 60 degrees, then pull shots back until they are
+    // as wide as needed (half-width tangents below). The board view only needs the board's width;
+    // duels are shot side-on, so cinematics need at least a 40 degree, 1.25:1 field, growing towards
+    // a 16:9 one in portrait. Wide windows (a >= 1.25) are untouched. Portrait also looks down more
+    // steeply so the board fills the tall frame.
+    this.cam.fov = a < 1.25 ? clamp(40 * (1.25 / a), 40, 60) : 40;
+    const half = Math.tan(THREE.MathUtils.degToRad(this.cam.fov / 2)) * a;
+    this.fit = { user: Math.max(1, 0.34 / half), cine: Math.max(1, (0.455 + 0.145 * clamp((1.25 - a) / 0.5, 0, 1)) / half) };
+    this.defPitch = a < 0.8 ? 0.98 : DEF_PITCH;
     this.cam.updateProjectionMatrix();
   }
 
   private sideYaw(side: Side) { return side === 'r' ? 0 : Math.PI; }
 
-  /** One-key reset to the default 45 degree view for the given side. */
+  /** One-key reset to the default view for the given side (45 degrees, steeper in portrait). */
   reset(side: Side) {
     this.user.yaw = this.cur.yaw + angDiff(this.cur.yaw, this.sideYaw(side));
-    this.user.pitch = DEF_PITCH; this.user.dist = DEF_DIST; this.user.target.set(0, 0, side === 'r' ? 0.6 : -0.6);
+    this.user.pitch = this.defPitch; this.user.dist = DEF_DIST; this.user.target.set(0, 0, side === 'r' ? 0.6 : -0.6);
   }
 
   /** Swing around to the side to move, keeping the user's zoom and tilt. */
@@ -152,7 +184,7 @@ class CameraRig {
     }
     const g = this.cine ?? this.user, k = 1 - Math.exp(-dt * (this.cine ? 5.5 : 4.2)), c = this.cur;
     c.yaw += angDiff(c.yaw, g.yaw) * k;
-    c.pitch = lerp(c.pitch, g.pitch, k); c.dist = lerp(c.dist, g.dist, k);
+    c.pitch = lerp(c.pitch, g.pitch, k); c.dist = lerp(c.dist, g.dist * (this.cine ? this.fit.cine : this.fit.user), k);
     c.target.lerp(g.target, k);
     // Keep yaw values bounded without a visible jump.
     if (!this.cine && Math.abs(c.yaw) > 50) { const n = Math.round(c.yaw / (Math.PI * 2)) * Math.PI * 2; c.yaw -= n; this.user.yaw -= n; }

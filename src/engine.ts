@@ -234,13 +234,16 @@ export class Engine {
     const num = (n: number) => (red ? CN_NUM[n - 1] : String(n));
     let head = NAMES[p.side][p.type] + fileNo(fc);
     if (p.type !== 'K' && p.type !== 'A' && p.type !== 'B') {
-      // Disambiguate same-type pieces sharing a file with 前/后 (front = closer to the enemy).
-      const rows: number[] = [];
-      for (let r = 0; r < 10; r++) { const q = this.board[idx(r, fc)]; if (q && q.side === p.side && q.type === p.type) rows.push(r); }
-      if (rows.length > 1) {
-        const ordered = red ? rows : rows.slice().reverse(); // front first
-        const k = ordered.indexOf(fr);
-        const tag = rows.length === 2 ? ['前', '后'][k] : k === 0 ? '前' : k === rows.length - 1 ? '后' : '中';
+      // Same-type pieces sharing a file are told apart front (closer to the enemy) to back: 前/后, 前/中/后
+      // for three pawns, 一二三四五 for more. When two files each hold several pawns, the pawns on both are
+      // numbered 一二三… together: files in the side's own order (file 一/1 first), each front to back.
+      // (Advisors and elephants need no tag: on a shared file only one can advance and one retreat.)
+      const files = stacks(this.board, p.side, p.type), own = files.get(fc)!;
+      if (own.length > 1) {
+        const multi = [...files.keys()].filter((c) => files.get(c)!.length > 1).sort((a, b) => (red ? b - a : a - b));
+        const k = own.indexOf(fr), n = own.length;
+        const tag = multi.length > 1 ? CN_NUM[multi.flatMap((c) => files.get(c)!.map((r) => c * 10 + r)).indexOf(fc * 10 + fr)]
+          : n === 2 ? ['前', '后'][k] : n === 3 ? ['前', '中', '后'][k] : CN_NUM[k];
         head = tag + NAMES[p.side][p.type];
       }
     }
@@ -261,6 +264,19 @@ export class Engine {
     }
     return n;
   }
+}
+
+/** Rows of `side`'s pieces of `type`, by file (column), each list front (nearest the enemy) first. */
+export function stacks(board: (Piece | null)[], side: Side, type: PType): Map<number, number[]> {
+  const out = new Map<number, number[]>();
+  for (let k = 0; k < 10; k++) {
+    const r = side === 'r' ? k : 9 - k; // red advances toward row 0, black toward row 9
+    for (let c = 0; c < 9; c++) {
+      const q = board[idx(r, c)];
+      if (q && q.side === side && q.type === type) out.set(c, [...(out.get(c) ?? []), r]);
+    }
+  }
+  return out;
 }
 
 /** UCCI-style square: file a-i, rank 0-9 counted from red's back rank. */

@@ -475,7 +475,7 @@ function playClassic(i: number): boolean {
 function classicCard(text = '', sub = '', side: Caption['side'] = 'd', life = 0, small = false) { hud.reelCard(text, sub, side, life, small); burn.card = life ? caption(text, side, life, sub) : null; }
 function captionMove() {
   const m = engine.history.at(-1)!, n = engine.history.length;
-  classicCard(traditional(m.notation), `第 ${n} 著`, m.piece.side, 2.4, true);
+  classicCard(traditional(m.notation), `第 ${n} 手`, m.piece.side, 2.4, true);
 }
 function classicEnd() {
   const r = rp!, c = r.classic!;

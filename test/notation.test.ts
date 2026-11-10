@@ -142,6 +142,10 @@ const rng = (seed: number) => { let s = seed; return () => ((s = (s * 1103515245
     '1.炮二平五马8进7 2.马二进三车9平8',
   ]) assert.equal(decode(text).engine.key(), want, text);
   assert.deepEqual(notationTokens('1. 炮二平五 (宜走兵三进一) 马８进７'), ['炮二平五', '马８进７']);
+  // A PGN's [FEN] tag sets the start (here red gives a horse), and its other tags are skipped.
+  const pgn = decode('[Game "Chinese Chess"]\n[FEN "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/R1BAKABNR w - - 0 1"]\n1. 炮二平五 炮８平５ 2. 马二进三');
+  assert.equal(pgn.fen, 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/R1BAKABNR w');
+  assert.equal(pgn.moves.length, 3);
   assert.throws(() => decode('1. 炮二平五 马８进７ 2. 马二进五'), (err: unknown) => err instanceof RecordError && /Move 3: "马二进五" is not a legal move/.test(err.message));
 }
 console.log('notation tests passed');

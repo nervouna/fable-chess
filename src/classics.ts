@@ -1,11 +1,16 @@
 // Classic games from the public-domain manuals 橘中秘 (朱晉楨, 1632) and 梅花譜 (王再越, Kangxi era),
-// stored as the manuals' own move text and read through the notation parser when picked.
+// stored as move text in the traditional notation and read through the notation parser when picked.
+// Titles are the manuals' chapter names, some shortened (不食棄馬, 先手屏風馬, 橫車破直車).
 //
-// Provenance. Each line was copied by script from the source named beside it (comments and variations
-// stripped, the source's spelling kept), then checked move by move against a second transcription:
+// Provenance. Six lines were copied by script from the text source named beside them (comments and
+// variations stripped, the source's spelling kept) and checked move by move against a second,
+// separately kept transcription:
 // - 橘中秘: the 象棋巫師 / xqbase PGN files, as mirrored in github.com/liangqi/xqwizard at commit
-//   eab4a994 (2013), checked against the dpxq.com records on xiangqiqipu.com or xqdao.com.
-// - 梅花譜: see each entry. The manuals' lines often stop once one side is clearly lost.
+//   eab4a994 (2013), checked against the dpxq.com records on xiangqiqipu.com and/or xqdao.com.
+// - 梅花譜 屏風馬第一局: the 漢典古籍 text, checked against dpxq and a mirrored Baidu Baike copy.
+// The seventh (梅花譜 順炮橫車第一局) exists only as one dpxq record of board coordinates, served by
+// two sites; its text here is the engine's notation of those moves. The manuals' lines often stop
+// once one side is clearly lost.
 import { decode, type GameRecord } from './record.ts';
 import type { EndReason, Side } from './engine.ts';
 
@@ -126,7 +131,7 @@ export const CLASSICS: Classic[] = [
   {
     // github.com/liangqi/xqwizard/blob/eab4a994/XQWIZARD/橘中秘/2.让先/2-11.让先-小列手炮弃相陷车.PGN (the source's last note: 死车)
     // checked: https://www.xiangqiqipu.com/Category/View-7879.html, http://m.xqdao.com/qipu/show/69085/
-    title: '棄象陷車', source: '橘中秘 · 讓先第十一局', result: '紅車已死', winner: 'b',
+    title: '棄相陷車', source: '橘中秘 · 讓先第十一局', result: '紅車已死', winner: 'b',
     blurb: '小列手炮：黑方退马弃象，诱红车深入吃底，七回合即成死车。',
     moves: `1. 炮二平五 炮２平５
 2. 马二进三 马２进３

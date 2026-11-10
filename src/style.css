@@ -214,6 +214,7 @@ html, body {
   #over button { min-height: 48px; }
   #replay button { min-height: 44px; } #rp-range { height: 44px; } #reelbar button { min-height: 44px; }
   .moves .hd button { min-height: 44px; min-width: 44px; }
+  .moves .hd span { display: none; } /* three 44px buttons fill the header */
 }
 
 /* Phones, portrait and landscape: the tool panel becomes a grid of labelled icons (six per row in

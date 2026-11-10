@@ -122,8 +122,9 @@ export function decode(text: string): GameRecord {
       return { from: (all[i] / 90) | 0, to: all[i] % 90 };
     });
   }
-  // Readable form: an optional FEN line, then ICCS tokens; numbers and traditional notation are ignored.
-  const fl = /^\s*FEN:?\s*(.+)$/im.exec(t);
+  // Readable form: an optional FEN line (or a PGN [FEN "..."] tag), then ICCS tokens; numbers and
+  // traditional notation are ignored.
+  const fl = /\[FEN\s+"([^"]+)"\]/i.exec(t) ?? /^\s*FEN:?\s*(.+)$/im.exec(t);
   const fen = fl ? checkFen(fl[1]) : START_FEN;
   const body = fl ? t.replace(fl[0], '') : t;
   const tokens = body.match(/\b[a-i][0-9][-]?[a-i][0-9]\b/gi) ?? [];

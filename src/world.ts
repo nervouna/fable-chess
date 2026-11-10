@@ -1,8 +1,10 @@
 // The battlefield: terrain, river, stone board terraces, fortresses, props, sky and lighting.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BANK, BRIDGE_X, clamp, colX, lerp, rand, randS, rowZ, smooth, tween, WATER_Y } from './core';
 import { fx } from './fx';
 import { box, clothMat, cone, cyl, FONT, glyphTexture, group, mesh, sph, std, TEAM, timeU } from './kit';
+import { quality, type Settings } from './quality';
 
 export const SUN_DIR = new THREE.Vector3(-0.55, 0.4, -0.73).normalize();
 const FOG = new THREE.Color().setRGB(0.3, 0.215, 0.3);
@@ -22,6 +24,33 @@ const sstep = (a: number, b: number, v: number) => smooth(clamp((v - a) / (b - a
 
 const riverCenter = (x: number) => { const k = sstep(12, 40, Math.abs(x)); return (Math.sin(x * 0.045) * 9 + Math.sin(x * 0.11 + 1.3) * 2) * k; };
 const riverWidth = (x: number) => 1.25 + sstep(10, 30, Math.abs(x)) * 2.6;
+
+/** The valley as an N x N grid, denser towards the board, with vertex colours. */
+function terrainGeo(N: number) {
+  const R = 150, pos = new Float32Array((N + 1) * (N + 1) * 3), index: number[] = [];
+  const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), 1.7) * R;
+  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+    const x = warp((i / N) * 2 - 1), z = warp((j / N) * 2 - 1), k = (j * (N + 1) + i) * 3;
+    pos[k] = x; pos[k + 1] = terrainH(x, z); pos[k + 2] = z;
+    if (i < N && j < N) { const a = j * (N + 1) + i, b = a + 1, c = a + N + 1, d = c + 1; index.push(a, c, b, b, c, d); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setIndex(index); g.computeVertexNormals();
+  const nrm = g.attributes.normal, col = new Float32Array(pos.length), c = new THREE.Color();
+  const mud = new THREE.Color(0x4b3e2c), dirt = new THREE.Color(0x77633f), grass = new THREE.Color(0x56602f), rock = new THREE.Color(0x5b5650), snow = new THREE.Color(0xc9c6d4);
+  for (let i = 0; i < pos.length / 3; i++) {
+    const x = pos[i * 3], h = pos[i * 3 + 1], z = pos[i * 3 + 2], slope = 1 - nrm.getY(i);
+    c.copy(dirt).lerp(grass, sstep(0.35, 0.65, fbm(x * 0.12 + 3, z * 0.12)));
+    c.lerp(mud, 1 - sstep(-0.6, -0.15, h));
+    c.lerp(rock, clamp(sstep(0.12, 0.4, slope) + sstep(9, 22, h), 0, 1));
+    c.lerp(snow, sstep(24, 34, h + fbm(x * 0.1, z * 0.1) * 6) * (1 - sstep(0.3, 0.6, slope)));
+    c.multiplyScalar(0.8 + fbm(x * 0.7, z * 0.7, 3) * 0.4);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
 
 function terrainH(x: number, z: number) {
   const dx = Math.max(0, Math.abs(x) - 14), dz = Math.max(0, Math.abs(z) - 28), dist = Math.hypot(dx, dz);
@@ -259,11 +288,78 @@ export class World {
     this.sky(renderer);
     this.lights();
     this.terrain();
+    const n = scene.children.length;
     this.board();
     this.bridges();
     this.fortress('r'); this.fortress('b');
     this.props();
+    this.scenery = scene.children.slice(n);
     this.lightShafts();
+    this.applyQuality(quality.s);
+  }
+
+  // ---------- quality ----------
+  private ground!: THREE.Mesh;
+  private trees!: THREE.InstancedMesh;
+  private rocks!: THREE.InstancedMesh;
+  /** Roots built by board/bridges/fortress/props: static except for cloth. */
+  private scenery: THREE.Object3D[] = [];
+  private merged: THREE.Mesh[] = [];
+  private mergedKey = '';
+
+  /** Shadow resolution, terrain density, prop shadows and merged scenery for a quality tier. */
+  applyQuality(s: Settings) {
+    const sh = this.sun.shadow;
+    if (sh.mapSize.x !== s.shadowSize) { sh.mapSize.set(s.shadowSize, s.shadowSize); sh.map?.dispose(); sh.map = null; }
+    if (this.ground.userData.n !== s.terrain) { this.ground.geometry.dispose(); this.ground.geometry = terrainGeo(s.terrain); this.ground.userData.n = s.terrain; }
+    this.trees.castShadow = this.rocks.castShadow = s.propShadows;
+    const key = s.merge ? `merge-${s.propShadows}` : '';
+    if (key !== this.mergedKey) { this.mergedKey = key; this.mergeScenery(s); }
+  }
+
+  /**
+   * Draw the static scenery as one mesh per material (and shadow flags) instead of ~450 small ones.
+   * The originals stay in the scene, hidden, so the top tier can show them again unchanged.
+   */
+  private mergeScenery(s: Settings) {
+    for (const m of this.merged) { m.removeFromParent(); m.geometry.dispose(); }
+    this.merged = [];
+    const parts: THREE.Mesh[] = [];
+    const ok = (o: THREE.Object3D): boolean => {
+      const m = o as THREE.Mesh, mat = m.material as THREE.Material;
+      const fit = m.isMesh && !(m as THREE.InstancedMesh).isInstancedMesh && !Array.isArray(mat) && !mat.transparent
+        && mat.onBeforeCompile === THREE.Material.prototype.onBeforeCompile && !!m.geometry.index; // cloth animates in its shader
+      return fit && o.children.every(ok);
+    };
+    const walk = (o: THREE.Object3D) => { if (ok(o)) o.traverse((c) => parts.push(c as THREE.Mesh)); else o.children.forEach(walk); };
+    this.scenery.forEach(walk);
+    for (const p of parts) p.visible = !s.merge;
+    if (!s.merge) return;
+    // Materials that only differ by instance (the camp tents) share one draw.
+    const twin = new Map<string, THREE.Material>();
+    const same = (mat: THREE.Material) => {
+      const m = mat as THREE.MeshStandardMaterial;
+      const k = m.map || !m.isMeshStandardMaterial ? mat.uuid : [m.color.getHex(), m.emissive.getHex(), m.roughness, m.metalness, m.flatShading].join();
+      if (!twin.has(k)) twin.set(k, mat);
+      return twin.get(k)!;
+    };
+    const buckets = new Map<string, { mat: THREE.Material; cast: boolean; recv: boolean; order: number; geos: THREE.BufferGeometry[] }>();
+    this.scene.updateMatrixWorld(true);
+    for (const p of parts) {
+      const mat = same(p.material as THREE.Material), cast = p.castShadow && (s.propShadows || !p.userData.prop);
+      const k = [mat.uuid, cast, p.receiveShadow, p.renderOrder].join();
+      if (!buckets.has(k)) buckets.set(k, { mat, cast, recv: p.receiveShadow, order: p.renderOrder, geos: [] });
+      const g = new THREE.BufferGeometry(); // copies: the originals stay intact for the top tier
+      for (const a of ['position', 'normal', 'uv']) g.setAttribute(a, p.geometry.getAttribute(a).clone());
+      g.setIndex(p.geometry.index);
+      buckets.get(k)!.geos.push(g.applyMatrix4(p.matrixWorld));
+    }
+    for (const b of buckets.values()) {
+      const m = new THREE.Mesh(mergeGeometries(b.geos)!, b.mat);
+      for (const g of b.geos) g.dispose();
+      m.castShadow = b.cast; m.receiveShadow = b.recv; m.renderOrder = b.order;
+      this.scene.add(m); this.merged.push(m);
+    }
   }
 
   private sky(renderer: THREE.WebGLRenderer) {
@@ -305,31 +401,11 @@ export class World {
   }
 
   private terrain() {
-    const N = 250, R = 150, pos = new Float32Array((N + 1) * (N + 1) * 3), index: number[] = [];
-    const warp = (u: number) => Math.sign(u) * Math.pow(Math.abs(u), 1.7) * R;
-    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
-      const x = warp((i / N) * 2 - 1), z = warp((j / N) * 2 - 1), k = (j * (N + 1) + i) * 3;
-      pos[k] = x; pos[k + 1] = terrainH(x, z); pos[k + 2] = z;
-      if (i < N && j < N) { const a = j * (N + 1) + i, b = a + 1, c = a + N + 1, d = c + 1; index.push(a, c, b, b, c, d); }
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setIndex(index); g.computeVertexNormals();
-    const nrm = g.attributes.normal, col = new Float32Array(pos.length), c = new THREE.Color();
-    const mud = new THREE.Color(0x4b3e2c), dirt = new THREE.Color(0x77633f), grass = new THREE.Color(0x56602f), rock = new THREE.Color(0x5b5650), snow = new THREE.Color(0xc9c6d4);
-    for (let i = 0; i < pos.length / 3; i++) {
-      const x = pos[i * 3], h = pos[i * 3 + 1], z = pos[i * 3 + 2], slope = 1 - nrm.getY(i);
-      c.copy(dirt).lerp(grass, sstep(0.35, 0.65, fbm(x * 0.12 + 3, z * 0.12)));
-      c.lerp(mud, 1 - sstep(-0.6, -0.15, h));
-      c.lerp(rock, clamp(sstep(0.12, 0.4, slope) + sstep(9, 22, h), 0, 1));
-      c.lerp(snow, sstep(24, 34, h + fbm(x * 0.1, z * 0.1) * 6) * (1 - sstep(0.3, 0.6, slope)));
-      c.multiplyScalar(0.8 + fbm(x * 0.7, z * 0.7, 3) * 0.4);
-      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    const m = (this.ground = new THREE.Mesh(terrainGeo(quality.s.terrain), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
+    m.userData.n = quality.s.terrain;
     m.receiveShadow = true;
     this.scene.add(m);
+    const c = new THREE.Color();
     this.water = makeWater();
     this.scene.add(this.water);
 
@@ -355,6 +431,7 @@ export class World {
     }
     rocks.count = n; rocks.castShadow = rocks.receiveShadow = true;
     this.scene.add(trees, rocks);
+    this.trees = trees; this.rocks = rocks;
   }
 
   private board() {
@@ -455,8 +532,8 @@ export class World {
       const x = randS(20), z = -rand(4.5, 15), wx = x * (side === 'r' ? -1 : 1), wz = s * 22.5 + (side === 'r' ? -z : z);
       const y = terrainH(wx, wz) + 0.1;
       const r = rand(1.3, 2);
-      mesh(cone(r, r * 1.25, 8), std(i % 3 ? 0xb8a98a : T.main, { roughness: 1 }), x, y + r * 0.62, z, g);
-      mesh(cyl(0.03, 0.03, 0.9, 5), trim, x, y + r * 1.25 + 0.4, z, g);
+      mesh(cone(r, r * 1.25, 8), std(i % 3 ? 0xb8a98a : T.main, { roughness: 1 }), x, y + r * 0.62, z, g).userData.prop = true;
+      mesh(cyl(0.03, 0.03, 0.9, 5), trim, x, y + r * 1.25 + 0.4, z, g).userData.prop = true;
     }
   }
 
@@ -622,7 +699,7 @@ export class World {
     // Rain streaks follow the camera's focus; splashes dot the terrace.
     const ru = (this.rain.material as THREE.ShaderMaterial).uniforms;
     this.rain.visible = m.rain > 0.01; ru.uRain.value = m.rain; ru.uCenter.value.copy(focus);
-    this.rain.geometry.setDrawRange(0, Math.floor(3600 * Math.min(1, m.rain * 1.2)) * 2);
+    this.rain.geometry.setDrawRange(0, Math.floor(3600 * quality.s.rain * Math.min(1, m.rain * 1.2)) * 2);
     for (let i = 0, n = m.rain * 90 * dt; i < n; i++) {
       if (n - i < 1 && Math.random() > n - i) break;
       fx.alpha.emit({ x: focus.x + randS(11), y: 0.03, z: focus.z + randS(11), life: 0.28, size: 0.06, size2: 0.4, c: 0xd6e4ff, a: 0.3 });

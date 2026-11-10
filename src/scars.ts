@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { colX, disposeTree, rand, randS, rowZ, terraceInset, tween } from './core';
 import { fx } from './fx';
+import { quality } from './quality';
 
 export type ScarKind = 'scorch' | 'crater' | 'stain' | 'crack' | 'hoof' | 'rut' | 'gash' | 'foot';
 const CELL: Record<ScarKind, number> = { scorch: 0, crater: 1, stain: 2, crack: 3, hoof: 4, rut: 5, gash: 6, foot: 7 };
@@ -156,7 +157,7 @@ class Scars {
       if (terraceInset(tx, tz) > 0.2) { const x0 = o.position.x, z0 = o.position.z; tween(0.3, (t) => { o.position.x = x0 + (tx - x0) * t; o.position.z = z0 + (tz - z0) * t; }); }
     }
     this.wreck.push({ o, ply });
-    while (this.wreck.length > MAX_WRECK) disposeTree(this.wreck.shift()!.o);
+    while (this.wreck.length > MAX_WRECK * quality.s.debris) disposeTree(this.wreck.shift()!.o);
   }
 
   /** Drop everything created after move `ply` (0 clears the field). */

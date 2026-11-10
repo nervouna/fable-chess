@@ -131,6 +131,12 @@ class Sfx {
   gong() { for (const [f, v] of [[98, 0.4], [147, 0.25], [196.5, 0.2], [262, 0.14], [331, 0.1], [415, 0.06]]) this.tone('sine', f, f * 0.985, 3.2, v); this.nz(0.5, 0.2, 'bandpass', 900, 300, 2); }
   check() { this.tone('sine', 196, 194, 1.4, 0.3); this.tone('sine', 294, 292, 1.4, 0.2); this.tone('triangle', 588, 584, 0.6, 0.12); this.nz(0.2, 0.14, 'bandpass', 1500, 500, 2); }
   drum(delay = 0, v = 1) { this.tone('sine', 120, 42, 0.4, 0.7 * v, delay); this.nz(0.1, 0.25 * v, 'lowpass', 900, 200, 1, delay); }
+  /** The reserves' drum roll: quickening strokes that swell, then a last heavy beat. */
+  roll() { for (let i = 0; i < 14; i++) this.drum(i * (0.085 - i * 0.0025), 0.25 + i * 0.03); this.drum(1.2, 0.9); }
+  /** A distant shout from the ranks: a few voices of noise through vowel-like bands. */
+  cheer() { for (const [f, d] of [[620, 0], [880, 0.05], [1150, 0.1], [740, 0.18]]) this.nz(0.9, 0.05, 'bandpass', f, f * 1.25, 5, d, 0.12); }
+  /** War drums answering a check: two heavy pairs. */
+  warDrums() { [0, 0.3, 0.75, 1.05].forEach((d, i) => this.drum(d, i % 2 ? 0.7 : 1)); }
   victory() { [0, 0.22, 0.44, 0.6, 0.76, 0.88, 1.0].forEach((d, i) => this.drum(d, 0.6 + i * 0.07)); this.gong(); [392, 523, 659, 784].forEach((f, i) => this.tone('triangle', f, f, 1.2, 0.12, 1.1 + i * 0.16)); }
 }
 

@@ -138,8 +138,7 @@ a game in traditional notation (炮二平五 马8进7 …) pastes too.
 导出视频 records the reel as it plays (at least 1280 pixels on the long side, at most 1080p) and
 offers the file to download or, where the browser can, to share.
 
-Quality is picked from the device on first load, then from your choice.
-The lower tiers use lighter models and fewer effects.
+Quality follows the device at first, then your choice. Lower tiers use lighter models.
 
 On a phone or tablet:
 

@@ -814,7 +814,7 @@ function step(realDt: number) {
     m.cap.rotation.y = t * 1.6; m.cap.scale.setScalar(0.95 + 0.12 * pulse);
   }
   beam.material.opacity = 0.32 + 0.14 * pulse; beam.rotation.y = t;
-  fx.update(dt); scars.update(dt); armies.update(dt, world.mood.storm);
+  fx.update(dt); scars.update(dt); armies.update(dt, world.mood.storm, rig.cam.position, rig.focusPoint);
   rig.update(realDt);
   const k = 1 - Math.exp(-realDt * 6), gu = grade.uniforms;
   gu.uTilt.value = lerp(gu.uTilt.value, post.tilt, k);

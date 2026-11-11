@@ -1,7 +1,7 @@
 // The battlefield: terrain, river, stone board terraces, fortresses, props, sky and lighting.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BANK, BRIDGE_X, clamp, colX, lerp, rand, randS, riverCenter, rowZ, smooth, tween, WATER_Y } from './core';
+import { BANK, blocksSight, BRIDGE_X, clamp, colX, lerp, rand, randS, riverCenter, rowZ, smooth, tween, WATER_Y } from './core';
 import { fx } from './fx';
 import { box, clothMat, cone, cyl, FONT, glyphTexture, group, mesh, sph, std, TEAM, timeU } from './kit';
 import { quality, type Settings } from './quality';
@@ -215,6 +215,8 @@ export class World {
   sun!: THREE.DirectionalLight;
   private water!: THREE.Mesh;
   private braziers: Brazier[] = [];
+  /** Flank flags, which dip into the ground when they stand between the camera and its subject. */
+  private flags: { g: THREE.Group; dip: number }[] = [];
   private rays: THREE.Mesh[] = [];
   private acc = 0;
   private hemi!: THREE.HemisphereLight;
@@ -523,6 +525,7 @@ export class World {
       const f = mesh(new THREE.PlaneGeometry(1.5, 0.95, 10, 4).translate(0.75, 0, 0), clothMat(T.main, null, 'flag'), 0, 3.6, 0, g);
       f.rotation.y = Math.PI * 0.5 * -sx + (z > 0 ? 0.3 : -0.3);
       mesh(new THREE.PlaneGeometry(1.5, 0.12, 10, 1).translate(0.75, 0.42, 0.005), clothMat(T.trim, null, 'flag'), 0, 0, 0, f).castShadow = false;
+      this.flags.push({ g, dip: 0 });
     }
     // War drums
     for (const sx of [-1, 1]) for (const z of [-6.7, 6.7]) {
@@ -673,6 +676,12 @@ export class World {
   update(t: number, dt: number, focus: THREE.Vector3 = ORIGIN) {
     this.applyMood(dt, focus);
     river.update();
+    const ease = Math.min(1, Math.max(dt, 1 / 120) * 12); // hit-stop must not freeze a dipping flag
+    for (const f of this.flags) {
+      const hid = !!this.cam && blocksSight(f.g.position.x, 3.4, f.g.position.z, 2.6, this.cam.position, focus);
+      f.dip += ((hid ? 1 : 0) - f.dip) * ease;
+      f.g.position.y = -0.1 - 5 * smooth(f.dip);
+    }
     for (const b of this.braziers) {
       if (Math.random() < dt * 40) fx.fire(b.pos, 1, 0.8);
       if (Math.random() < dt * 5) fx.embers(b.pos, 1, 0xff8a30, 0.15, 2.4);

@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Side } from './engine';
-import { clamp, clock, lerp, smooth } from './core';
+import { blocksSight, clamp, clock, lerp, smooth } from './core';
 import { fx } from './fx';
 import { sfx } from './audio';
 import { box, clothMat, cone, cyl, glyphTexture, sph, TEAM } from './kit';
@@ -92,7 +92,7 @@ function armShader(m: THREE.Material) {
 
 // ---------- state ----------
 interface Man { x: number; z: number; ph: number; drop: number; flee: number; jit: number }
-interface Banner { g: THREE.Group; flag: THREE.Mesh; top: number; tilt: number }
+interface Banner { g: THREE.Group; flag: THREE.Mesh; top: number; tilt: number; w: number; /** 0 standing .. 1 dipped out of the camera's way */ dip: number }
 interface Host {
   side: Side; s: number; yaw: number;
   men: Man[]; ranks?: THREE.InstancedMesh; arm?: THREE.InstancedBufferAttribute;
@@ -167,7 +167,7 @@ class Armies {
       const top = 6.2 - w * 0.31 - 0.05;
       flag.position.set(0, top, 0); // every flag streams the same way, as the camp banners do in the one wind
       g.add(flag);
-      banners.push({ g, flag, top, tilt: Math.sign(x) });
+      banners.push({ g, flag, top, tilt: Math.sign(x), w, dip: 0 });
     }
     const torches = [[-AISLE + 0.4, 12.1], [AISLE - 0.4, 12.1], [-13.2, 17.2], [13.2, 17.2]].map(([x, z]) => new THREE.Vector3(x, GROUND, s * z));
     return { side, s, yaw, men: [], drummers, darm, drums, banners, wind, torches, shown: 0.6, target: 0.6 };
@@ -228,8 +228,8 @@ class Armies {
   morale(): Record<Side, number> { return { r: this.hosts.r.target, b: this.hosts.b.target }; }
 
   // ---------- per frame ----------
-  update(dt: number, storm: number) {
-    const t = clock.time;
+  update(dt: number, storm: number, eye?: THREE.Vector3, look?: THREE.Vector3) {
+    const t = clock.time, ease = Math.min(1, Math.max(dt, 1 / 120) * 12); // hit-stop must not freeze a dipping banner
     let ti = 0;
     for (const h of Object.values(this.hosts)) {
       h.shown += (h.target - h.shown) * Math.min(1, dt * 0.8);
@@ -278,6 +278,10 @@ class Armies {
       for (const b of h.banners) {
         b.flag.position.y = b.top - (1 - clamp(m * 1.6, 0, 1)) * 1.4 - (lost ? 1.2 * fin : 0);
         b.g.rotation.z = (lost ? 0.75 * fin : 0) * b.tilt + 0.01 * Math.sin(t * 0.9 + b.g.position.x) * (1 + storm);
+        // A banner standing between the camera and what it is looking at dips into the ground.
+        const hid = !!eye && !!look && blocksSight(b.g.position.x, GROUND + b.top, b.g.position.z, b.w * 1.25 + 1.2, eye, look);
+        b.dip += ((hid ? 1 : 0) - b.dip) * ease;
+        b.g.position.y = GROUND - 7.4 * smooth(b.dip);
       }
       // Torches: burn with morale, gutter as it fails.
       const flame = (lost ? 0.25 : 0.3 + 0.75 * m) * (won ? 1.25 : 1);

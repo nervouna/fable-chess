@@ -63,6 +63,15 @@ export function disposeTree(o: THREE.Object3D) {
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const smooth = (t: number) => t * t * (3 - 2 * t);
+type P3 = { x: number; y: number; z: number };
+/** Does a ball of radius `r` at (cx, cy, cz) come between `eye` and the point it is looking at? */
+export function blocksSight(cx: number, cy: number, cz: number, r: number, eye: P3, look: P3) {
+  const dx = look.x - eye.x, dy = look.y - eye.y, dz = look.z - eye.z, len2 = dx * dx + dy * dy + dz * dz;
+  if (len2 < 1e-6) return false;
+  const k = ((cx - eye.x) * dx + (cy - eye.y) * dy + (cz - eye.z) * dz) / len2; // nearest point along the sight line
+  if (k <= 0 || k >= 1) return false;
+  return Math.hypot(eye.x + dx * k - cx, eye.y + dy * k - cy, eye.z + dz * k - cz) < r;
+}
 export const rand = (a = 1, b?: number) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
 export const randS = (a = 1) => (Math.random() * 2 - 1) * a;
 export const angDiff = (a: number, b: number) => {
